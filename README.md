@@ -2,9 +2,12 @@
 
 This repository contains a draft ACM Computing Surveys article titled "Efficient State Management in Parallel and Distributed Systems".
 
+For graduate-student takeover and collaborative follow-up, start with `HANDOFF.md`.
+
 ## Layout
 
 - `main.tex`: survey manuscript draft.
+- `HANDOFF.md`: detailed Chinese handoff guide for reading papers, forming synthesis, and integrating new material into the survey.
 - `refs.bib`: BibTeX database for the current draft.
 - `figures/`: TikZ figure sources for the propagation view and integrated runtime loop.
 - `WRITING_FRAMEWORK.md`: student handoff guide for structured literature integration and section ownership.
