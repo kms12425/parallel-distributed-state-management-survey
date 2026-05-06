@@ -1,0 +1,40 @@
+\begin{tikzpicture}[
+  node distance=7mm and 8mm,
+  seam/.style={draw, rounded corners, thick, align=center, minimum width=34mm, minimum height=11mm, fill=black!3},
+  control/.style={draw, rounded corners, align=center, minimum width=30mm, minimum height=9mm, fill=black!1},
+  metric/.style={draw, rounded corners, align=center, minimum width=24mm, minimum height=8mm, fill=black!1},
+  note/.style={align=center, fill=white, inner sep=1pt},
+  arrow/.style={-{Latex[length=2.5mm]}, thick, shorten <=2pt, shorten >=2pt}
+]
+
+\node[metric] (telemetry) {telemetry\\topology, skew,\\error, SLA};
+
+\node[seam, right=16mm of telemetry] (repr) {Representation seam\\compressed tuples,\\samples, dictionaries};
+\node[seam, right=of repr] (path) {Execution-path seam\\device mapping,\\movement, decompression};
+\node[seam, right=of path] (budget) {Boundary seam\\quality budget,\\latency cap, energy cap};
+
+\node[control, below=11mm of repr] (c1) {format switch\\sampling rate\\fidelity tier};
+\node[control, below=11mm of path] (c2) {CPU/GPU choice\\operator path\\transfer timing};
+\node[control, below=11mm of budget] (c3) {compensation\\admission\\fallback mode};
+\path (telemetry.north east) ++(0,8mm) coordinate (highL);
+\path (c3.north east) ++(0,8mm) coordinate (highR);
+\path (telemetry.south east) ++(0,-2mm) coordinate (midL);
+\path (c2.west) ++(-8mm,0) coordinate (midR);
+\path (telemetry.south) ++(0,-8mm) coordinate (lowL);
+\path (c1.south) ++(0,-8mm) coordinate (lowR);
+\node[note, above=5mm of budget] (n3) {measured error\\and boundary failures};
+\node[note, below=3mm of c2] (n2) {movement cost\\and queueing};
+\node[note, below=3mm of c1] (n1) {compression ratio\\and reuse density};
+
+\draw[arrow] (telemetry.east) -- (repr.west);
+\draw[arrow] (repr.east) -- (path.west);
+\draw[arrow] (path.east) -- (budget.west);
+
+\draw[arrow] (repr.south) -- (c1.north);
+\draw[arrow] (path.south) -- (c2.north);
+\draw[arrow] (budget.south) -- (c3.north);
+
+\draw[arrow] (c3.north east) -- (highR) -- (highL) -- (telemetry.north east);
+\draw[arrow] (c2.west) -- (midR) -- (midL) -- (telemetry.south east);
+\draw[arrow] (c1.south) -- (lowR) -- (lowL) -- (telemetry.south);
+\end{tikzpicture}

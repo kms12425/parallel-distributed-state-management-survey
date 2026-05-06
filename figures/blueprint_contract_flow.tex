@@ -1,0 +1,33 @@
+\begin{tikzpicture}[
+  node distance=8mm and 8mm,
+  block/.style={draw, rounded corners, thick, align=center, minimum width=29mm, minimum height=10mm, fill=black!3},
+  guard/.style={draw, rounded corners, align=center, minimum width=25mm, minimum height=8mm, fill=black!1},
+  arrow/.style={-{Latex[length=2.5mm]}, thick, shorten <=2pt, shorten >=2pt}
+]
+
+\node[block] (catalog) {State catalog\\schema, lifecycle,\\quality sensitivity};
+\node[block, right=of catalog] (observe) {Observation\\steady signals,\\disturbance alerts};
+\node[block, right=of observe] (kernel) {Decision kernel\\hard constraints,\\soft objectives};
+\node[block, right=of kernel] (actuate) {Actuation APIs\\migrate, refresh,\\compact, admit};
+\node[block, right=of actuate] (safety) {Safety envelope\\rollback, replay,\\no-eviction rules};
+\path (observe.north) ++(0,8mm) coordinate (feedbackL);
+\path (safety.north) ++(0,8mm) coordinate (feedbackR);
+
+\draw[arrow] (catalog) -- (observe);
+\draw[arrow] (observe) -- (kernel);
+\draw[arrow] (kernel) -- (actuate);
+\draw[arrow] (actuate) -- (safety);
+\draw[arrow] (safety.north) -- (feedbackR) -- node[midway, above=2pt, align=center, fill=white, inner sep=1pt, font=\small] {validated outcomes,\\violations, debt} (feedbackL) -- (observe.north);
+
+\node[guard, below=10mm of catalog] (g1) {typed state\\ownership contracts};
+\node[guard, below=10mm of observe] (g2) {confidence and\\delay metadata};
+\node[guard, below=10mm of kernel] (g3) {precedence,\\utility, budgets};
+\node[guard, below=10mm of actuate] (g4) {idempotence and\\bounded rollback};
+\node[guard, below=10mm of safety] (g5) {recovery invariants\\and guardrails};
+
+\draw[arrow] (g1.north) -- (catalog.south);
+\draw[arrow] (g2.north) -- (observe.south);
+\draw[arrow] (g3.north) -- (kernel.south);
+\draw[arrow] (g4.north) -- (actuate.south);
+\draw[arrow] (g5.north) -- (safety.south);
+\end{tikzpicture}

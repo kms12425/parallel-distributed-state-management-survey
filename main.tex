@@ -42,7 +42,7 @@ State has become the operational core of modern data systems. Stream processors,
 
 We structure the survey around three tightly coupled dimensions of state management. First, we review state access and scheduling, covering online observation, hotspot diagnosis, locality-aware cost modeling, and runtime control for shared state under concurrency. Second, we review state-aware execution optimization, focusing on how hardware topology, KV-cache memory management, energy constraints, latency-service objectives, approximation boundaries, and quality guarantees jointly shape end-to-end gains. Third, we review state evolution and reuse, covering online updates, continual retention, dynamic knowledge maintenance, and memory-centric inference pipelines. Across these dimensions, we highlight a common propagation effect: local mismatches in access, execution, or evolution often amplify into system-level instability.
 
-Beyond summarizing the literature, the survey contributes a unifying conceptual framework, a cross-domain taxonomy, and an agenda for future systems that integrate access governance, execution control, and memory evolution into one runtime loop. We argue that the next generation of stateful infrastructure---especially for intelligent services on heterogeneous hardware---should treat state management not as a storage detail but as the central systems abstraction that links observability, control, and long-horizon service quality.
+Beyond summarizing the literature, the survey contributes a propagation-oriented conceptual framework, a cross-domain taxonomy with comparative mechanism syntheses, an anti-pattern and blueprint view that connects recurring failures to concrete runtime contracts, and a disturbance-oriented evaluation agenda for future systems. We argue that the next generation of stateful infrastructure---especially for intelligent services on heterogeneous hardware---should treat state management not as a storage detail but as the central systems abstraction that links observability, control, recovery, and long-horizon service quality. In particular, we show why contracts that separate local freshness versus exposure freshness in distributed retrieval and nominal retention budget versus effective retention budget in retention stores are becoming first-class systems requirements rather than implementation details.
 \end{abstract}
 
 \keywords{stateful systems, stream processing, distributed systems, runtime optimization, heterogeneous hardware, LLM serving, KV cache, continual learning, retrieval-augmented generation}
@@ -69,7 +69,7 @@ Our synthesis is organized around three dimensions:
 
 Figure~\ref{fig:propagation} summarizes the organizing perspective used throughout the survey. Rather than viewing access, execution, and evolution as independent stages owned by different subsystems, we treat them as a single control loop over long-lived state. That framing matters for survey methodology as well: a result counts as state-management progress only if it explains a control decision over that loop, not merely a one-off local acceleration.
 
-The survey makes three concrete contributions. First, it offers a unified vocabulary that connects streaming, approximate execution, and memory-centric intelligent services. Second, it proposes a taxonomy that separates state problems by \emph{access}, \emph{execution}, and \emph{evolution} while emphasizing their feedback loops. Third, it identifies a research agenda for integrated runtimes that coordinate state observability, scheduling, update control, and reusable memory services on heterogeneous hardware.
+The survey makes four concrete contributions. First, it offers a unified vocabulary that connects streaming, approximate execution, serving, retrieval, and memory-centric intelligent services. Second, it proposes a taxonomy and a set of comparative syntheses that separate state problems by \emph{access}, \emph{execution}, and \emph{evolution} while emphasizing their feedback loops. Third, it distills recurring anti-patterns and converts them into a blueprint-oriented view of runtime contracts, control surfaces, and disturbance-aware evaluation, including explicit contracts for shard-exposure freshness and budget-elastic retention. Fourth, it identifies a research agenda for integrated runtimes that coordinate state observability, scheduling, update control, recovery semantics, and reusable memory services on heterogeneous hardware.
 
 \begin{figure*}[t]
 \centering
@@ -284,7 +284,272 @@ From a systems perspective, this is the point where memory stops being an auxili
 
 The survey's central claim is that evolution cannot be managed independently. Continuous updates create future access hotspots. Retention decisions alter memory footprint and execution cost. Retrieval quality affects whether approximate or hardware-conscious execution is acceptable downstream. Future systems should therefore treat memory evolution as an online control loop coupled to access and execution rather than as a background adaptation mechanism.
 
-\section{Synthesis, Design, and Research Outlook}
+\section{Comparative Synthesis Across Domains}
+
+\subsection{Methodological Notes on Survey Synthesis}
+
+To keep cross-domain synthesis coherent, we use a consistent integration protocol.
+
+\paragraph{Step 1: Paper Intake and Typing}
+
+Each candidate paper should be typed by state object, control surface, and boundary metric before prose integration. Papers that cannot be typed should remain in a backlog list until clarified.
+
+\paragraph{Step 2: Mechanism Grouping Before Writing}
+
+Papers should be grouped by mechanism family, not venue chronology. Typical families include migration control, memory reclamation, phase-aware scheduling, retrieval index maintenance, and quality-bounded approximation.
+
+\paragraph{Step 3: Comparative Paragraph Minimum}
+
+A subsection extension should contain at least one comparative paragraph that contrasts two or more mechanisms under a shared boundary. Purely additive summaries are insufficient for a survey article targeting CSUR standards.
+
+\paragraph{Step 4: Gap Statement and Testable Claim}
+
+Every new subsection should end with a gap statement and one testable systems claim. This ensures the survey remains analytically forward-looking rather than encyclopedic.
+
+\paragraph{Step 5: Reproducibility Checks}
+
+Before accepting new content, authors should verify citation resolution, terminology consistency, and section-level boundary clarity. A practical checklist is: (1) no undefined references, (2) no duplicate concept aliases without mapping, (3) each paragraph ties mechanism to boundary.
+
+\subsection{Cross-Domain Comparative Synthesis}
+
+This section deepens the survey with domain-specific comparative syntheses. Each subsection answers the same three questions: which state object dominates in the domain, which runtime controls are mature, and which control seams remain under-developed.
+
+\subsubsection{Streaming and Transactional Dataflow Systems}
+
+Streaming and transactional dataflow systems share a core tension: they want low-latency updates over mutable shared state while preserving deterministic recovery and bounded operational overhead. From early stream engines to modern transactional stream processors, the visible progress has largely come from making state transitions explicit in the runtime rather than hidden in operator code paths~\cite{abadi2003aurora,murray2013naiad,mao2023morphstream}.
+
+The earliest seam was explicit transition semantics. Aurora and Borealis treated operator graphs and adaptation paths as runtime-managed artifacts, while MillWheel, Naiad, and Dataflow elevated event time, pending work, watermarks, and partial-order progress into the control plane rather than leaving them as hidden bookkeeping~\cite{abadi2003aurora,abadi2005borealis,akidau2013millwheel,murray2013naiad,akidau2015dataflow}. This shift matters because it separates two questions that older runtimes often conflated: whether an update is logically visible, and whether the corresponding state is physically stable enough to migrate, checkpoint, or replay.
+
+A second precursor seam is progress-aware state advancement. Trill, Differential Dataflow, Flink, and StreamCloud each made a different part of that seam visible: incremental maintenance state, frontier or timestamp progression, and elastic ownership transfer all determine whether state can be updated continuously without turning coordination into a hidden bottleneck~\cite{chandramouli2014trill,murray2013differential,carbone2015flink,gulisano2012streamcloud}. This family matters because it frames access scheduling not only as conflict management, but also as safe progress over partially materialized state.
+
+A first mature control seam is access topology. Systems that explicitly reason about locality, key skew, and synchronization surfaces achieve more stable behavior than those optimizing only per-operator throughput~\cite{zhang2019briskstream,zhang2020concurrent}. The key lesson is that contention and locality are endogenous: scheduling decisions reshape them, and measurement must feed back into scheduling.
+
+These topology decisions are not independent from fault handling. They define where barriers accumulate, which partitions replay together, and how much skew migration must absorb during reconfiguration. In that sense, access topology already encodes a latent recovery policy even before the runtime exposes one explicitly~\cite{zhang2019briskstream,zhang2020concurrent,carbone2015asynchronous,zhao2024recovery,mao2025spacker}.
+
+A second mature seam is recovery coupling. Recovery is no longer a pure failure-mode concern; it is a steady-state design partner. Asynchronous snapshotting showed early that checkpoint alignment is not passive bookkeeping: the runtime must coordinate barriers, in-flight state, and snapshot boundaries so that fault tolerance remains lightweight during normal operation~\cite{carbone2015asynchronous}. Recent recovery work extends that logic to multicore transactional streaming, where replay scheduling and recovery metadata must be co-designed with the steady-state execution plan~\cite{zhao2024recovery}. Checkpoint cadence, log granularity, and migration mechanism therefore jointly define whether latency remains bounded during faults and reconfiguration. Systems that isolate these concerns administratively often pay duplicated state-transfer overhead.
+
+A third seam is elasticity with state ownership transfer. The best-known failure mode is scaling compute capacity without designing explicit ownership transfer contracts for state. Elasticity then appears successful in microbenchmarks but unstable in long-running mixed workloads. Operator-state-management lines make this tradeoff visible and suggest that scale-out and fault tolerance should share a common state-transfer substrate~\cite{fernandez2013osm,nasir2019megaphone}.
+
+Open gaps remain significant. Most systems still under-model multi-tenant interference where contention surfaces change with tenant mix rather than input rate alone. Another recurring gap is weak support for semantic state objects (for example, dynamic retrieval caches in stream-adjacent applications), where access conflicts are not purely key-based and cannot be managed by partitioning alone.
+
+\subsubsection{Hardware-Conscious and Approximation-Aware Stateful Execution}
+
+Hardware-conscious systems established that stateful efficiency depends on movement and representation choices as much as arithmetic intensity. Fine-grained CPU/GPU coordination, dictionary-aware processing, and compression-aware scheduling illustrate this shift~\cite{zhang2020finestream,zeng2024cstream}. The domain's strongest contributions expose state representation as a runtime control surface rather than a static storage decision.
+
+That control surface is broader than device placement alone. CompressStreamDB and adaptive compression systems show that the runtime can often avoid needless decompression or memory movement by changing representation format, operator path, and compression level together rather than optimizing each stage independently~\cite{zhang2023compressstreamdb,yu2025adaptivecompression}. In other words, the optimized object is not merely a kernel but a stateful data path whose fidelity, placement, and transfer shape the attainable service envelope. Figure~\ref{fig:execution-seams} summarizes this seam structure: representation decisions, execution-path choices, and quality boundaries are coupled controls rather than separate subsystems.
+
+\begin{figure*}[t]
+\centering
+\resizebox{0.94\textwidth}{!}{\input{figures/execution_control_seams}}
+\caption{Control seams in hardware-conscious and approximate execution. Representation choices, execution-path decisions, and quality-boundary enforcement form one closed-loop control problem over stateful data paths.}
+\label{fig:execution-seams}
+\end{figure*}
+
+Approximation-aware systems add a boundary model that is still underused outside their subcommunity. BlinkDB, ApproxHadoop, ApproxJoin, StreamApprox, and IncApprox already made the essential systems point years ago: once a runtime saves work by operating over samples or summaries, it must control not only response time but also update debt, reuse value, and error stability over time~\cite{agarwal2013blinkdb,goiri2015approxhadoop,wang2018approxjoin,hu2018streamapprox,chen2018incapprox}. More recent mechanisms such as PECJ, FreeSAM, LEAP, and LibAMM push that logic closer to online control. They show that proactive compensation, adaptive sample sizing, predictive sample maintenance, and approximate kernel selection are valuable precisely because they couple quality boundaries to runtime cost decisions~\cite{zeng2024pecj,tang2025freesam,xu2024leap,zeng2024libamm}. Without this coupling, approximation can improve local throughput while degrading user-level utility.
+
+Read together, these papers expose three mechanism families within this comparative synthesis. The first is \emph{state-path shaping}, where FineStream, CStream, CompressStreamDB, and adaptive compression treat movement, encoding, and device mapping as one execution surface~\cite{zhang2020finestream,zeng2024cstream,zhang2023compressstreamdb,yu2025adaptivecompression}. The second is \emph{budgeted approximation}, where BlinkDB, ApproxHadoop, ApproxJoin, StreamApprox, and IncApprox treat sample or synopsis state as a reusable asset whose maintenance policy defines the real accuracy-latency frontier~\cite{agarwal2013blinkdb,goiri2015approxhadoop,wang2018approxjoin,hu2018streamapprox,chen2018incapprox}. The third is \emph{online boundary steering}, where PECJ, FreeSAM, LEAP, and LibAMM make compensation, sample adaptation, predictive materialization, or kernel choice part of the runtime loop itself~\cite{zeng2024pecj,tang2025freesam,xu2024leap,zeng2024libamm}. Their common systems lesson is that quality budgets must be first-class scheduling inputs, not post-hoc validation checks.
+
+The map therefore suggests two stronger cross-domain lessons. First, state representation should be treated as a dynamic control variable rather than a compile-time parameter: compression level, summary fidelity, and decompression path all reshape execution cost surfaces in the same way that batching or page layout reshapes serving cost surfaces. Second, error budgets should be compared as service-boundary contracts rather than as local approximation settings. A runtime that knows how to trade error for speed but does not know when that trade breaks p99 latency, downstream join quality, or future update cost is still operating open-loop.
+
+Open gaps include weak portability of policy tuning across hardware topologies, limited composition between compressed-state execution and approximation policies, and very weak integration between approximation control and recovery semantics. A system may know how to bound error during normal operation yet still fail to define what error contract survives reconfiguration, replay, or cross-device migration. That missing recovery-time boundary model is the clearest sign that this part of the literature still lacks a fully closed-loop runtime.
+
+\subsubsection{LLM Serving and Short-Lived Memory Lifecycles}
+
+LLM serving has made state-lifecycle management impossible to ignore. KV caches, prefix-sharing structures, phase-skewed queues, and increasingly multiplexed model-state layers now dominate runtime behavior in many deployments~\cite{kwon2023pagedattention,agrawal2024sarathi,li2023alpaserve,chen2024punica}. This domain has progressed rapidly because it translated memory overhead into an explicit scheduling and admission problem rather than a hidden allocator concern.
+
+One mature seam is orchestration and predictability. Clipper externalized batching, caching, and model-choice policy, while Clockwork turned execution-time predictability into a dispatchable control signal for request isolation and SLO management~\cite{crankshaw2017clipper,gujarati2020clockwork}. A second seam is memory layout and allocation policy. Paging-style approaches and explicit sharing surfaces improved memory efficiency and therefore expanded feasible batching regions~\cite{kwon2023pagedattention}. A third seam is phase-aware control: separating prefill and decode characteristics exposes different bottlenecks and enables targeted scheduling and placement actions~\cite{agrawal2024sarathi,zhong2024distserve,patel2024splitwise}. A fourth seam is control-plane and tenant-aware governance: Nexus made cluster occupancy and batching a first-class scheduling surface, InferLine and INFaaS showed that queue state, provisioning decisions, and heterogeneous replica choice already form a serving control loop around latency objectives, FlexGen made offload placement part of the memory lifecycle, and Punica plus AlpaServe showed that adapter state and partitioned model state introduce additional multiplexed memory layers whose isolation and sharing policies materially change utilization and interference~\cite{shen2019nexus,crankshaw2020inferline,romero2021infaas,sheng2023flexgen,chen2024punica,li2023alpaserve}.
+
+The harder systems case appears when these seams interact at cluster scale. DistServe, Splitwise, and FastGen show that separating prefill from decode is useful precisely because the two phases stress different resources, but Punica and AlpaServe make clear that the state being routed is not just generic KV memory: it often carries tenant-specific adapters, partition metadata, and multiplexing constraints whose residency rules change interference patterns~\cite{zhong2024distserve,patel2024splitwise,holmes2024fastgen,chen2024punica,li2023alpaserve}. Read together with Nexus, InferLine, and INFaaS, the design implication is that short-lived serving state already lives under a cluster-level governance loop of occupancy signals, queue backpressure, provisioning decisions, and admission control~\cite{shen2019nexus,crankshaw2020inferline,romero2021infaas}. Future runtimes should therefore treat phase splitting and tenant multiplexing as a joint optimization problem: they must decide where prefill state is created, which decode path inherits it, and when adapter or model-partition placement should override raw batching efficiency to preserve tail latency and isolation.
+
+Recent follow-on work shows that phase disaggregation creates a second-stage bottleneck: once prefill and decode are separated successfully, transfer and restoration of KV state become control surfaces in their own right. Prefill-as-a-Service argues that next-generation hybrid-attention models make cross-datacenter prefill offload increasingly plausible, but only when selective offloading, bandwidth-aware scheduling, and cache-aware placement are co-designed rather than treated as deployment afterthoughts~\cite{qin2026prfaas}. SplitZip and CacheFlow sharpen the same point from the data path itself. SplitZip treats GPU-friendly lossless KV compression as an online transfer optimization for disaggregated serving, while CacheFlow reframes KV restoration as a batch-aware multi-dimensional scheduling problem across tokens, layers, and GPUs~\cite{guo2026splitzip,nian2026cacheflow}. Read together with DistServe and Splitwise, these systems suggest that the next serving frontier is no longer only where phase boundaries should be drawn, but how transfer, restoration, and cross-cluster placement should be governed as one short-lived state lifecycle.
+
+Practitioner-facing technical discussions echo the same shift in emphasis. Although such posts are not substitutes for controlled systems evidence, they consistently center on KV footprint, TTFT inflation under long prompts, prefill/decode separation, and cache reuse for RAG or agentic workloads rather than on raw kernel speed alone. That convergence is useful as a deployment signal: the control seams highlighted by recent serving papers are already visible in day-to-day operational discourse.
+
+Structured-program serving adds a further layer: runtime-managed reuse boundaries across multi-call workflows, constrained decoding, and retrieval subcalls~\cite{zheng2023sglang}. In these settings, state lifecycle is no longer per-request only; it includes reusable intermediate objects whose value depends on program structure.
+
+Open gaps include cross-node lifecycle coordination for short-lived state, explicit global admission policies that anticipate cross-phase transfer and tenant interference, benchmark protocols that cover disturbance phases (burst, warmup, drift), and principled integration between serving memory control and retrieval-memory updates. Most evaluations still optimize one layer at a time.
+
+\subsubsection{Retrieval Memory and Vector-Index State Layers}
+
+Retrieval systems moved from lexical inverted indexes to dense and hybrid memory substrates where indexing, refresh, and serving are tightly coupled state problems~\cite{karpukhin2020dpr,khattab2020colbert,guu2020realm,lewis2020rag}. The key architectural transition is from ``querying documents'' to ``maintaining a living memory layer'' with explicit update and compaction debt.
+
+One mature mechanism family is external-memory orchestration. REALM, RAG, RETRO, and Atlas differ in training setup and scale, but all treat the indexed corpus as a reusable state layer whose refresh path and lookup boundary materially influence downstream quality~\cite{guu2020realm,lewis2020rag,borgeaud2022retro,izacard2022atlas}. A second family is index-structure and maintenance control. Dense dual-encoder systems improved retrieval quality and throughput tradeoffs, while late-interaction approaches preserved richer matching signals with manageable online cost by shifting computation between offline and online phases; product quantization and HNSW, in turn, show that compressed codes and graph topology are not mere implementation details but runtime controls over recall, latency, and memory footprint~\cite{karpukhin2020dpr,khattab2020colbert,jegou2011pq,malkov2020hnsw}. Streaming successors such as FreshDiskANN, SPFresh, and recent in-place update variants make the maintenance path itself explicit: disk-resident graph layers, in-place mutations, and locality-preserving repair or deletion policies determine whether freshness can be sustained without repeated global rebuilds at billion-vector scale~\cite{singh2021freshdiskann,xu2023spfresh,xu2025place}. A third family is structured long-horizon memory. Graph- and hierarchy-enhanced approaches such as HippoRAG and RAPTOR push the domain toward memory models that better capture multi-hop and evolving knowledge dependencies, but they also introduce explicit maintenance debt in graph rewiring, abstraction refresh, and stale-structure cleanup~\cite{wang2024hipporag,sarthi2024raptor}.
+
+A fourth family is planner-mediated index governance. Self-RAG makes retrieval invocation itself a runtime control decision rather than a fixed pipeline stage, but that decision only remains meaningful when the runtime also understands whether the underlying memory layer is stale, fragmented, or temporarily expensive to refresh~\cite{asai2024selfrag}. FlowRAG and CANDOR-Bench expose the next step in that control loop: once corpora and ANN structures evolve continuously, the dominant tradeoff is no longer simply retrieve versus do not retrieve, but whether to query a stale index, pay immediate rebuild or compaction cost, or defer maintenance and absorb future quality drift~\cite{zhang2026flowrag,wang2026candor}. Read together with PQ, HNSW, FreshDiskANN, and SPFresh, these systems suggest that planner decisions, compression policy, graph maintenance, storage-tier placement, and rebuild cadence are all part of one governance problem rather than separate offline and online concerns~\cite{jegou2011pq,malkov2020hnsw,singh2021freshdiskann,xu2023spfresh}.
+
+This comparison sharpens a systems distinction that is easy to blur in RAG-centric writing. PQ and HNSW mainly optimize steady-state query cost for a chosen representation, whereas FreshDiskANN, SPFresh, IP-DiskANN, and CANDOR-Bench optimize or expose the cost of keeping that representation live under inserts, deletions, and tiered storage. Once that distinction is explicit, retrieval maintenance stops looking like background ingestion plumbing: micro-batch size, local graph repair, in-place mutation, tombstones versus physical deletion, and SSD-resident placement all become runtime controls that trade present freshness against future rebuild debt. The resulting control problem is structurally close to KV-state management in serving, but the service boundary here is recall drift under corpus churn rather than TTFT.
+
+A complementary systems line shows that these choices do not disappear inside production vector stores. Milvus and Manu treat segment layout, shard placement, background indexing, and concurrency control as first-class data-management concerns rather than as wrappers around a single ANN structure~\cite{wang2021milvus,guo2022manu}. Read together with FreshDiskANN-style and SPFresh-style maintenance, they suggest that retrieval governance must span two coupled planes: local mutation policy inside each index shard, and cluster-level decisions about when segments are sealed, compacted, migrated, or queried under concurrent writes. This is the distributed analogue of phase governance in serving: the operational question is not only which index is accurate, but which partially refreshed shard is safe to expose at a given latency target.
+
+For systems researchers, the central insight is that retrieval quality is a lifecycle property, not just a model property. Refresh cadence, planner-triggered retrieval policy, index maintenance policy, compression choice, stale-memory eviction, and continuous-ANNS maintenance under churn govern long-term quality-cost balance as strongly as encoder architecture~\cite{asai2024selfrag,wang2026candor,zhang2026flowrag}.
+
+Practitioner-facing discussions around RAG and vector databases point to the same conclusion. Although such posts are not substitutes for controlled evaluation, they repeatedly foreground incremental index updates, freshness loss under document churn, SSD-backed storage hierarchy, vector-index tuning, and cache-style memory reuse. That convergence is useful as an operational signal: retrieval memory is already being experienced in practice as a governed lifecycle rather than as a one-time embedding artifact.
+
+Open gaps include unified treatment of dense, compressed, graph, hierarchical, and planner-mediated memory objects in one control plane, explicit trigger policies for when planners should tolerate staleness versus request rebuilds, deletion semantics and local-repair versus rebuild policies under tiered storage, cross-shard freshness contracts for distributed vector stores, and stronger operational metrics that connect refresh, rebuild, and compaction decisions to end-to-end service SLOs rather than isolated retrieval scores.
+
+\subsubsection{Continual Learning and Retention Governance}
+
+Continual-learning systems contribute a mature language for retention under bounded memory. Constraint-based methods such as EWC treat previously learned parameters as protected state, while GEM and A-GEM reinterpret an episodic buffer plus gradient projection as a runtime control over update interference~\cite{kirkpatrick2017ewc,lopez2017gem,chaudhry2019agem}. Exemplar-based methods such as iCaRL expose a complementary retention surface: once a bounded exemplar set also anchors class statistics and distillation targets, admission policy is no longer only about remembering old samples, but also about stabilizing the representation space that future updates will inherit~\cite{rebuffi2017icarl}. Replay-centric methods shift the control surface again: experience replay, MIR, DER, and GDumb all assume that bounded historical memory is inevitable, then ask which samples should be admitted, replayed, distilled, or retained to maximize future utility rather than merely preserve recency~\cite{rolnick2019experience,aljundi2019mir,buzzega2020der,prabhu2020gdumb}. REMIND adds a representation-level variant by showing that feature-space replay and lightweight reconstruction can make retention cheaper without eliminating the underlying state-budget problem~\cite{hayes2020remind}. Read together, these papers formalize retention as a governed state problem in which the runtime must decide what historical signal is worth protecting, how it is stored, and when it should influence future updates.
+
+Recent online systems make that operational reading harder to ignore. Ferret treats varying memory budgets and asynchronous update pipelines as changing runtime conditions rather than fixed benchmark knobs, while StreamFP shows that fingerprint-guided admission can encode future utility more directly than recency-only buffering under stream pressure~\cite{zhou2025ferret,li2026streamfp}. Read together with MIR, DER, and GDumb, these systems suggest that retention policy should be evaluated not only as a replay heuristic but also as an elastic store-management problem: when budgets shrink, the runtime must choose which memories to demote, summarize, or discard without destabilizing future adaptation.
+
+The strongest mechanisms therefore expose four reusable control surfaces: protected parameter state, episodic buffer selection, replay-time representation compression or distillation, and budget-elastic retention scheduling. Their common lesson is that stable adaptation depends on explicit interference control and budget-aware admission policies rather than on unconstrained online updates. This perspective is highly relevant to retrieval and serving systems that increasingly maintain evolving memory under strict resource constraints.
+
+What the literature still under-articulates, but increasingly implies, is a retention-store governance problem. EWC treats the protected set as a scarce budgeted object, GEM and A-GEM make replay eligibility a runtime choice under interference constraints, MIR and GDumb show that admission policy can dominate eventual retained quality, DER plus REMIND turn representation storage itself into a maintenance surface rather than a free byproduct, and Ferret plus StreamFP make budget fluctuation and selection telemetry part of the runtime loop rather than background assumptions~\cite{kirkpatrick2017ewc,lopez2017gem,chaudhry2019agem,aljundi2019mir,prabhu2020gdumb,buzzega2020der,hayes2020remind,zhou2025ferret,li2026streamfp}. Read together, these systems suggest that continual retention should be compared the same way we now compare retrieval indexes or serving caches: not only by accuracy outcomes, but also by how the runtime budgets storage, ranks future utility, compacts stale state, and accounts for maintenance debt over long-lived service horizons.
+
+Open gaps include system-level integration: many continual-learning methods remain model-centric and do not specify operational semantics for distributed retention stores, update fault handling, or cross-service consistency. A second gap is lifecycle accounting: the literature is strong on forgetting metrics but much weaker on maintenance overhead, refresh debt, and retention-store behavior under long-running multi-tenant service conditions. A third gap is elasticity semantics: even recent online methods say relatively little about how retention policy should react to abrupt budget contraction, tier migration, or background compaction under shared-service load. Survey work in continual learning already makes clear that evaluation choice strongly shapes what retention behavior becomes visible at all~\cite{delange2021survey}; from a systems angle, that means retention governance needs not only better mechanisms but also benchmark protocols that expose storage pressure, maintenance cost, and disturbance response rather than accuracy curves alone.
+
+Figure~\ref{fig:memory-planes} summarizes why these later sections belong together. Serving memory, retrieval memory, and retention stores have different lifetimes, but they all revolve around the same systems question: how a runtime uses shared telemetry and service boundaries to decide which state to admit, refresh, compact, or preserve.
+
+\begin{figure*}[t]
+\centering
+\resizebox{0.96\textwidth}{!}{\input{figures/memory_governance_planes}}
+\caption{Memory governance planes across serving, retrieval, and continual retention. The state objects differ in lifetime and granularity, but the control loop is structurally similar: shared telemetry feeds admission or rebuild decisions, and those decisions feed back into future latency, freshness, and reuse value.}
+\label{fig:memory-planes}
+\end{figure*}
+
+\subsubsection{Comparative Mechanism Matrices}
+
+The following long-form matrices make cross-domain comparison explicit at scale and complement the narrative synthesis with structured side-by-side evidence.
+
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\footnotesize
+\renewcommand{\arraystretch}{1.08}
+
+\setlength{\tabcolsep}{2pt}
+\scriptsize
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.14\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}}
+\caption{Large-scale mechanism matrix across representative papers.}\label{tab:large-matrix-a}\\
+\toprule
+Paper line & Dominant state object & Primary control surface & Evaluated boundary & Extension note \\
+\midrule
+\endfirsthead
+\toprule
+Paper line & Dominant state object & Primary control surface & Evaluated boundary & Extension note \\
+\midrule
+\endhead
+Aurora/Borealis~\cite{abadi2003aurora,abadi2005borealis} & continuous-query operator state & graph adaptation control & streaming throughput/latency & compare with modern migration control \\
+MillWheel/Naiad/Dataflow~\cite{akidau2013millwheel,murray2013naiad,akidau2015dataflow} & keyed window and progress state & time/progress semantics & correctness-latency tradeoff & add reconfiguration stress \\
+Trill/Differential/\newline Flink/StreamCloud~\cite{chandramouli2014trill,murray2013differential,carbone2015flink,gulisano2012streamcloud} & incremental state and progress metadata & frontier progress and elastic ownership & update latency and operability & connect progress with migration/recovery \\
+BriskStream/\newline Concurrent stream~\cite{zhang2019briskstream,zhang2020concurrent} & shared access paths and sync state & topology-aware placement and partitioning & throughput under contention & add multi-tenant hot-key stress \\
+MorphStream~\cite{mao2023morphstream} & transactional dependency state & dependency-aware scheduling & latency/throughput stability & compare with static baselines \\
+Fast recovery line~\cite{zhao2024recovery} & recovery metadata and logs & recovery-integrated control & recovery time and steady-state overhead & unify with migration control \\
+Megaphone/OSM/SEEP~\cite{nasir2019megaphone,fernandez2013osm,fernandez2010seep} & movable state shards & migration and elasticity control & reconfiguration latency & add correctness-envelope taxonomy \\
+FineStream/CStream/\newline CompressStreamDB~\cite{zhang2020finestream,zeng2024cstream,zhang2023compressstreamdb} & representation-aware operator \newline and format state & hardware-conscious mapping \newline + state-path control & speed/energy-delay tradeoffs & extend to accelerator mixes \newline and closed-loop format switching \\
+PECJ/LibAMM~\cite{zeng2024pecj,zeng2024libamm} & quality-sensitive intermediate state & approximation and compensation control & bounded quality vs cost & unify with service-level quality floors \\
+vLLM~\cite{kwon2023pagedattention} & paged KV and \newline memory-plane state & allocation, sharing, and \newline lifecycle admission & throughput at latency target & add cluster lifecycle governance \\
+Sarathi-Serve~\cite{agrawal2024sarathi} & phase-skewed serving state & prefill/decode scheduling \newline and batch shaping & throughput-latency frontier & benchmark disturbance and \newline phase migration \\
+SGLang~\cite{zheng2023sglang} & reusable program-\newline structured state & radix reuse and \newline program-boundary control & throughput on structured programs & map mixed-shape \newline cluster governance \\
+Clockwork/Clipper~\cite{gujarati2020clockwork,crankshaw2017clipper} & serving control-plane state & predictability and \newline orchestration control & tail-latency/SLO isolation & tie to lifecycle admission \\
+DistServe/Splitwise/\newline FastGen~\cite{zhong2024distserve,patel2024splitwise,holmes2024fastgen} & disaggregated phase and \newline transfer-queue state & phase split and \newline cluster governance & goodput + tail behavior & unify with tenant-aware admission \\
+Nexus/InferLine/INFaaS/\newline Punica/AlpaServe \\
+\cite{shen2019nexus,crankshaw2020inferline,romero2021infaas,chen2024punica,li2023alpaserve} & multiplexed tenant and \newline control-plane state & admission, provisioning, \newline isolation, and placement control & throughput/cost/\newline SLO stability & unify phase and \newline tenant governance \\
+DPR/ColBERT~\cite{karpukhin2020dpr,khattab2020colbert} & dense and late-interaction retrieval indexes & offline/online retrieval decomposition & retrieval quality vs serving cost & add update/refresh lifecycle dimension \\
+Self-RAG/FlowRAG/\newline CANDOR \\
+\cite{asai2024selfrag,zhang2026flowrag,wang2026candor} & planner and evolving \newline index state & retrieval gating + \newline rebuild control & long-horizon quality/\newline cost balance & add staleness-trigger policy \\
+Milvus/Manu/\newline FreshDiskANN/IP-DiskANN \\
+\cite{wang2021milvus,guo2022manu,singh2021freshdiskann,xu2025place} & segmented vector-store and \newline mutable graph state & shard lifecycle, deletion, \newline and maintenance control & distributed latency/\newline freshness balance & define cross-shard freshness \newline and compaction contracts \\
+HippoRAG/\newline FlowRAG \\
+\cite{wang2024hipporag,zhang2026flowrag} & graph-enhanced and evolving \newline retriever memory & dynamic memory \newline evolution control & long-horizon quality \newline and efficiency & add stale-memory debt metrics \\
+Continual retention line \\
+\cite{kirkpatrick2017ewc,lopez2017gem,aljundi2019mir,buzzega2020der,hayes2020remind,prabhu2020gdumb,zhou2025ferret,li2026streamfp} & constrained parameters, \newline replay buffers, compressed \newline state, and budget traces & interference control, \newline replay selection, budget \newline elasticity, and retention governance & forgetting vs adaptation \newline quality + store cost & connect with retrieval retention, \newline maintenance debt, and \newline elastic shared stores \\
+Approx. analytics line \\
+\cite{agarwal2013blinkdb,goiri2015approxhadoop,wang2018approxjoin,hu2018streamapprox,chen2018incapprox} & summary, sample, and \newline compensation state & accuracy-cost budget and \newline maintenance control & latency/error boundaries & link with serving SLAs \newline and recovery-time error contracts \\
+Spanner/Calvin/FaRM line \\
+\cite{corbett2012spanner,thomson2012calvin,dragojevic2014farm} & distributed transaction state and replication metadata & consistency/placement/concurrency control & correctness + latency + scale & compare with serving memory ownership models \\
+CRDT and replicated-data line \\
+\cite{shapiro2011crdt} & convergent replicated object state & conflict-free merge semantics & convergence and availability & study with retrieval-memory updates \\
+\bottomrule
+\end{longtable}
+
+\setlength{\tabcolsep}{3pt}
+\footnotesize
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.14\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}}
+\caption{Evaluation-and-gap matrix across representative state-management clusters.}\label{tab:large-matrix-b}\\
+\toprule
+Cluster & Recommended disturbance tests & Required metrics & Common blind spots & Open research direction \\
+\midrule
+\endfirsthead
+\toprule
+Cluster & Recommended disturbance tests & Required metrics & Common blind spots & Open research direction \\
+\midrule
+\endhead
+State access under skew & hotspot flip, burst tenant switch, rebalance events & throughput, p99, conflict density, migration lag & stationary-load-only evaluation & add workload phase annotations to results \\
+Recovery-integrated scheduling & fail-stop at different load phases, replay stress & recovery time, post-recovery stability, backlog clearance & treating recovery as isolated mode & quantify steady/recovery coupling cost \\
+Elastic stream migration & scale-out/in under active joins/windows & migration overhead, latency amplification, ownership transfer delay & no ownership semantics during transfer & write ownership-state contract subsection \\
+Hardware-conscious execution & topology perturbation and device contention & energy per useful result, latency, quality floor & microbenchmark-centric claims & add end-to-end boundary plots \\
+Approximation control & drift + disorder injection & bounded error, utility loss, throughput & static error assumptions & evaluate adaptive error budgeting \\
+KV cache lifecycle & long prompts + bursty decode + mixed sampling modes & memory waste, reuse ratio, p99, admission drop rate & allocator-only optimization view & add lifecycle-stage breakdown figures \\
+Serving disaggregation & independent pressure on prefill/decode pools & goodput, queue imbalance, transfer overhead & homogeneous-request assumptions & build mixed-length benchmark suite \\
+Structured serving programs & control-flow-heavy prompt programs & reuse hit rate, decode constraint overhead, tail latency & ignoring program-shape diversity & add program-template taxonomy \\
+Retrieval index evolution & continuous corpus updates + stale data injection + ANN churn + deletion bursts & recall@k, answer quality, update cost, query latency, freshness lag, compaction debt, cross-shard skew & one-shot index build assumption & define refresh-compaction-rebuild schedules with shard exposure rules \\
+Graph memory retrieval & multi-hop drift and conflicting evidence injection & quality robustness, latency, maintenance overhead & no maintenance debt accounting & add graph maintenance cost analysis \\
+Continual retention policies & memory budget sweep with domain shift + abrupt budget contraction & forgetting, adaptation speed, retention overhead, compaction lag, demotion loss & model-only reporting without system costs & add retention-store systems metrics and elasticity protocols \\
+Cross-domain middleware & concurrent serving + retrieval + update workloads & SLA violations, cross-layer backpressure, policy conflicts & layer-by-layer optimization & prototype unified control API discussion \\
+Tiered memory architectures & hot/cold transition storms & promotion accuracy, movement cost, hit/miss latency gap & simplistic hotness heuristics & evaluate prediction-based tiering policies \\
+Quality-bounded serving & quality floor shifts at runtime & quality, latency, throughput, fallback frequency & fixed-quality-threshold assumptions & add dynamic bound adaptation study \\
+Scheduling-policy composition & overlapping policy triggers & oscillation frequency, convergence time, rollback count & no conflict semantics & define policy precedence model \\
+Observability fidelity & delayed/noisy metrics simulation & decision regret, control delay, wrong-action rate & perfect telemetry assumption & add signal-confidence modeling subsection \\
+Admission governance & adversarial burst and tenant unfairness workloads & admission fairness, SLA stability, rejection utility loss & average-only admission metrics & include per-tenant fairness analysis \\
+Long-horizon reuse quality & week-scale synthetic drift phases & quality decay slope, refresh debt, maintenance spikes & short-run benchmark horizon & add multi-phase evaluation protocol \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\subsection{Analytical Maturity}
+
+\subsubsection{Cross-Layer Mechanism Synthesis}
+
+Across access, execution, and evolution, the literature shows a shared systems pattern: local policy gains often disappear once effects propagate through the state lifecycle. In streaming systems, fine-grained synchronization and partitioning can improve multicore scalability~\cite{zhang2017revisiting,zhang2020concurrent}, yet these gains degrade when topology and locality are not co-optimized~\cite{zhang2019briskstream}. Hardware-conscious lines similarly show that movement and representation of state can dominate kernel-level arithmetic gains~\cite{zhang2020finestream,zeng2024cstream}.
+
+Inference runtimes exhibit the same mechanism. Paged KV management and reuse-aware serving turn memory from an implementation detail into an explicit control object~\cite{kwon2023pagedattention,zheng2023sglang}. However, allocator improvements alone are insufficient when phase asymmetry between prefill and decode remains unscheduled~\cite{agrawal2024sarathi,holmes2024fastgen}. This mirrors transactional stream findings where stable behavior requires dependency-aware online control rather than static plans~\cite{mao2023morphstream}.
+
+Approximation and retrieval lines reinforce boundary-first design. Approximate kernels and compensation mechanisms are sustainable only when quality floors are integrated into runtime decisions~\cite{zeng2024pecj,zeng2024libamm}. In long-horizon retrieval and retention systems, update and maintenance policies directly shape downstream quality-cost trajectories~\cite{zhou2025ferret,zhang2026flowrag}. Without explicit boundary models, systems accumulate maintenance debt that later erases short-run gains.
+
+Recovery and elasticity also converge into one state-transfer problem. Snapshotting, migration, and recovery acceleration are most robust when they share transfer semantics and observability channels instead of being isolated subsystems~\cite{carbone2015asynchronous,fernandez2013osm,zhao2024recovery}. This suggests a unified control-plane abstraction for ownership transfer across steady-state and failure-time operation.
+
+The strongest cross-domain principle is therefore state-as-scheduling-object. Instead of scheduling tasks over passive data, modern runtimes schedule around mutable state objects (KV pages, operator shards, retrieval structures, retention buffers), and then map compute accordingly~\cite{zheng2023sglang,zhong2024distserve,patel2024splitwise}. Explicit lifecycle stages (admit, place, mutate, compact, reclaim) make closed-loop governance feasible.
+
+Persistent unresolved mechanism gaps include:
+\begin{enumerate}[leftmargin=*]
+\item high-fidelity observability for semantic state conflicts beyond coarse counters;
+\item cross-tier lifecycle coordination for short-lived and long-lived memory objects;
+\item policy-composition semantics that prevent oscillation under overlapping triggers;
+\item long-horizon accounting of maintenance debt and reuse-value decay.
+\end{enumerate}
+
+\subsubsection{Evaluation Protocols and Threats to Validity}
+
+Evaluation should treat state management as closed-loop control, not isolated optimization. Each experiment should explicitly specify the state object, control surface, and service boundary before reporting outcomes. This prevents local speedups from being misread as end-to-end gains when lifecycle paths remain unchanged~\cite{kwon2023pagedattention,agrawal2024sarathi,zheng2023sglang,mao2023morphstream}.
+
+Disturbance-driven evaluation is required. Stationary replay alone hides instability that appears under burst, skew, and phase transitions. Protocols should fix random seeds, preserve disturbance timestamps, and report both phase-local and aggregate outcomes so inflection points are auditable~\cite{zhang2019briskstream,zhang2020concurrent}.
+
+A minimal protocol suite should include:
+\begin{enumerate}[leftmargin=*]
+\item \textbf{burst disturbance}: short high-intensity arrivals stressing fragmentation and queue growth;
+\item \textbf{skew disturbance}: popularity flips testing migration and reuse stability;
+\item \textbf{topology disturbance}: controlled device/NUMA perturbations isolating movement sensitivity;
+\item \textbf{semantic disturbance}: update drift probing retention and index-evolution coupling.
+\end{enumerate}
+
+Long-horizon metrics are necessary when claims involve reuse or adaptation: reuse survival, reclamation debt, update-to-benefit lag, post-shock recovery half-life, and quality-retention trajectories. These reveal delayed regressions that short-window throughput cannot capture~\cite{kwon2023pagedattention,zhou2025ferret,zhang2026flowrag}.
+
+For retrieval and retention systems, this protocol should be made more concrete. Retrieval evaluations should distinguish local shard freshness from cross-shard exposure freshness, because a distributed vector store can hide stale or partially rebuilt segments behind a healthy aggregate recall number. Retention evaluations should likewise distinguish nominal retention budget from effective retention budget after background compaction, demotion, or migration. Without these separations, systems can appear robust simply because deferred maintenance debt is pushed outside the reported window.
+
+Coupling-aware ablations should be standard. Components must be evaluated not only marginally but also under interaction terms (access-only, execution-only, evolution-only, joint), because many gains emerge only when controls are coordinated~\cite{mao2023morphstream,zeng2024cstream,zeng2024pecj}.
+
+Negative results should be first-class evidence. Reports should include boundary failures, sign reversals (for example, higher reuse but worse p99), and oscillation windows under disturbance. This avoids survivorship bias and tightens claim scope to measured envelopes~\cite{zhang2020concurrent,zeng2024pecj,wu2023sentistream}.
+
+Threats to validity should be operationalized as constraints: internal validity via seed/time control and warmup policy; construct validity via strict separation of overlap opportunity vs realized reuse; external validity via multi-regime and topology-perturbed replication. Claims should remain bounded to tested disturbance and lifecycle horizons.
+
+\subsubsection{Research Agenda Beyond Isolated Policy Tuning}
+
+The next stage of progress is architectural rather than heuristic: isolated policy tuning can improve local regimes, but cross-layer instability persists when lifecycle governance is fragmented~\cite{zhang2019briskstream,mao2023morphstream,kwon2023pagedattention,agrawal2024sarathi}. Across the literature, the recurring requirements are already visible: observability that links local contention to service drift, scheduling that treats mutable state rather than tasks as the primary placement object, recovery-aware lifecycle control, and explicit semantics for composing overlapping policies. The retrieval and retention lines make this especially concrete: future systems need benchmarkable contracts for when a partially refreshed shard may serve traffic, when a retention tier may demote memory under pressure, and how deferred maintenance debt is surfaced before it causes visible quality collapse.
+
+These requirements motivate the next two sections. Section~5 turns them into design implications and runtime contracts; Section~6 narrows them into evaluation norms and a shorter forward-looking agenda. The main point here is comparative rather than prescriptive: the same unresolved control seams recur across streaming, serving, retrieval, and retention, which suggests that the field is ready to converge on shared runtime abstractions rather than continue proliferating domain-local heuristics.
+
+\section{Design Implications for Stateful Runtimes}
 
 \subsection{Cross-Cutting Design Principles}
 
@@ -306,57 +571,9 @@ Across access management, execution control, and evolution, the strongest system
 
 Many systems report impressive local improvements, yet only some translate into service-level gains. The difference often lies in boundary modeling. A system must know where locality breaks, where approximation degrades quality, where energy savings hurt latency, or where updates erode future reuse. Efficient state management therefore depends as much on identifying safe operating regions as on optimizing the interior of those regions.
 
-\subsection{An Integrated Research Agenda}
-
-The next generation of stateful infrastructure should integrate the three dimensions reviewed above into one runtime loop. We highlight four priorities.
-
-\subsubsection{Unified State Observability}
-
-Runtimes should expose shared-state objects, access paths, retention signals, and quality impacts through a common telemetry interface. Today, most systems provide only fragments of this picture.
-
-\subsubsection{State-Centric Scheduling on Heterogeneous Hardware}
-
-Scheduling should jointly consider who accesses state, where the state resides, what quality boundary applies, and whether the state is being evolved concurrently. Such schedulers are especially relevant for intelligent inference stacks on heterogeneous accelerators.
-
-\subsubsection{Memory Middleware for Dynamic AI Services}
-
-Retrieval-augmented generation, continual learning, and agentic services need a memory middleware layer that supports controlled updates, structured retention, and multi-round reuse. The same middleware perspective should eventually cover short-lived serving state such as KV caches and prefix-sharing indices, because these objects already demand explicit policies for admission, sharing, and reclamation. Existing systems provide early building blocks but not yet a stable general abstraction.
-
-That middleware will likely need to span multiple concrete state forms simultaneously: replicated key-value layers for durable control state, vector and late-interaction indexes for semantic retrieval, compressed approximate-nearest-neighbor structures for efficient memory search, and attention-state managers for short-lived per-request reuse~\cite{chang2008bigtable,decandia2007dynamo,karpukhin2020dpr,khattab2020colbert,jegou2011pq,malkov2020hnsw,kwon2023pagedattention,dao2024flashattention2}. The architectural challenge is therefore not just building a larger cache; it is providing a unified control surface across state objects with very different lifetimes, update rules, and quality implications.
-
-\subsubsection{End-to-End Evaluation Beyond Local Speedups}
-
-The field needs more evaluations that connect local mechanisms to service metrics such as tail latency, SLA violations, energy per useful result, forgetting under drift, and long-horizon reuse quality. Without such evaluation, state-management claims risk remaining local rather than infrastructural.
-
-Figure~\ref{fig:runtime-loop} condenses this agenda into one runtime picture. The unifying requirement is not to invent a universal optimizer, but to make state transitions observable enough that multiple optimizers can safely cooperate. In other words, a stateful runtime should know what it is storing, why that state matters, how expensive it is to move or mutate, and what downstream service boundary it affects.
-
-\begin{figure*}[t]
-\centering
-\input{figures/integrated_runtime_loop}
-\caption{Integrated runtime loop for future stateful infrastructure. Observation, boundary modeling, scheduling, and update control should be coupled rather than deployed as isolated policies.}
-\label{fig:runtime-loop}
-\end{figure*}
-
-\subsection{Evaluation Dimensions for Future Surveys and Systems}
-
-An enduring weakness of the area is evaluation fragmentation. Access papers often report throughput and contention reduction, execution papers report speedup or energy savings, and evolution papers report quality or forgetting. These are all important, but they make it hard to compare whether two systems are solving the same problem at different phases of the loop or genuinely addressing different control surfaces. A more coherent evaluation vocabulary should at least track four dimensions.
-
-The first dimension is \emph{steady-state efficiency}, including throughput, amortized cost per useful result, and locality-sensitive resource use. The second is \emph{tail behavior}, including percentile latency, burst amplification, and recovery delay. The third is \emph{state quality}, including bounded approximation error, retrieval quality under drift, and retention value under memory budgets. The fourth is \emph{operational sustainability}, including migration cost, update overhead, and how quickly a control loop re-stabilizes after workload or hardware changes. Systems that score well on only one dimension can still be valuable, but they should be described as local improvements rather than full state-management solutions.
-
-Figure~\ref{fig:disturbance-protocol} turns this vocabulary into a compact evaluation protocol. The key shift is from one-shot benchmarking to multi-phase disturbance testing: warmup, burst, reconfiguration, drift, and long-horizon maintenance should be treated as one connected experiment rather than separate appendices.
-
-\begin{figure*}[t]
-\centering
-\resizebox{0.94\textwidth}{!}{\input{figures/disturbance_evaluation_protocol}}
-\caption{A disturbance-oriented evaluation protocol for stateful systems. The same mechanism should be judged across steady-state, burst, reconfiguration, drift, and long-horizon maintenance phases rather than only on a single stationary run.}
-\label{fig:disturbance-protocol}
-\end{figure*}
-
-For survey authors, this evaluation vocabulary provides a way to compare systems without flattening their contributions. A streaming scheduler and a dynamic retriever may report different headline metrics, yet both can be judged by whether they expose a stable state object, define an optimization boundary around it, and connect local policy decisions to long-horizon system behavior. That comparability is one reason the state-management perspective is useful beyond any single subcommunity.
-
 \subsection{A Design Space for Stateful Runtime Architectures}
 
-The previous sections reviewed mechanisms by topic. This section restructures the same knowledge as a practical architecture design space. The goal is to make explicit which design decisions tend to co-travel in successful systems and which combinations repeatedly cause fragility. We focus on four architectural axes: state granularity, control-plane coupling, lifecycle management, and service-boundary alignment.
+The previous sections established recurring control seams; this section recasts them as a practical architecture design space. The goal is to make explicit which design decisions tend to co-travel in successful systems and which combinations repeatedly cause fragility. We focus on four architectural axes: state granularity, control-plane coupling, lifecycle management, and service-boundary alignment.
 
 \subsubsection{State Granularity: Record, Key, Segment, and Session}
 
@@ -408,39 +625,77 @@ Read-side acceleration often hides expensive write-side debt. Dense retrieval in
 
 Ownership assumptions that are valid at small scale often fail under bursty multi-tenant workloads. Static ownership models impede migration, sharing, and reclamation, and complicate fault recovery. Designs that explicitly represent transferable ownership and bounded lease semantics tend to adapt better under dynamic pressure, although they require stronger correctness reasoning.
 
-\subsection{A Systems Blueprint for Building Stateful Infrastructure}
+Taken together, these anti-patterns imply a concrete design requirement: a stateful runtime needs explicit contracts for observation, precedence, disturbance handling, write-path accounting, and ownership transfer. The blueprint in the next section should therefore be read as a direct repair kit for these recurring failures rather than as an abstract implementation wish list. Its purpose is to force each control loop to answer five practical questions before deployment: what state is visible, what boundary is protected, what actions are legal, how conflicts are resolved, and which invariants still hold during disturbance.
+
+\subsection{A Contract-Oriented Blueprint for Stateful Runtimes}
 
 This section converts the survey into an implementation-oriented blueprint. The intent is not to prescribe one architecture, but to provide a minimally complete set of components and contracts that can be specialized by domain.
 
-\subsubsection{Blueprint Layer 1: State Catalog and Schema Contracts}
+Figure~\ref{fig:blueprint-flow} makes the blueprint explicit as a contract flow rather than a component checklist. The point is not merely that systems need observation, decision, and actuation, but that each stage must expose the contract that the next stage relies on: typed state objects, delayed telemetry semantics, precedence-aware decision logic, idempotent actuation, and recovery-time guardrails.
+
+\begin{figure*}[t]
+\centering
+\resizebox{0.97\textwidth}{!}{\input{figures/blueprint_contract_flow}}
+\caption{Blueprint contract flow for stateful runtimes. The five layers are useful only when the contract between them is explicit: typed state feeds observation, observation feeds a boundary-aware decision kernel, decisions call bounded actuation interfaces, and a safety envelope validates outcomes and feeds violations back into the loop.}
+\label{fig:blueprint-flow}
+\end{figure*}
+
+\subsubsection{State Catalog and Schema Contracts}
 
 Every production runtime should begin with a machine-readable state catalog: state object names, granularity, mutability class, lifecycle stage, and quality sensitivity. This catalog can be seen as a control-plane schema for runtime state. Without it, policy modules rely on implicit assumptions that quickly diverge across teams.
 
+For newer retrieval and retention systems, the catalog should also encode exposure and budget semantics explicitly. A retrieval shard should record not only whether it exists, but whether it is fresh enough to serve externally visible traffic after partial rebuild or compaction. A retention tier should record not only nominal retention budget, but effective retention budget after background compaction, demotion, or replication overhead. These fields turn lifecycle debt into typed state rather than post-hoc debugging evidence.
+
 For survey continuity, authors can map each reviewed system into this catalog format. Doing so exposes where papers are comparable and where they solve fundamentally different state problems. It also helps identify under-specified designs that report strong results without clear state typing.
 
-\subsubsection{Blueprint Layer 2: Observation and Disturbance Detection}
+\subsubsection{Observation and Disturbance Detection}
 
 Observation should include both steady metrics and disturbance indicators. Steady metrics capture normal load and quality behavior; disturbance indicators detect shifts such as hotspot flips, phase imbalance, retrieval drift, or memory-fragmentation spikes. Disturbance-aware control loops are essential for systems whose workload phases differ sharply, as in prefill/decode serving or periodic retriever refresh.
 
+In practical memory-heavy services, this means distinguishing internal health from external exposure. Retrieval telemetry should separate local shard freshness from cross-shard exposure freshness, because partially rebuilt segments can be internally consistent yet unsafe to expose at the service boundary. Retention telemetry should likewise separate nominal retention budget from effective retention budget, because compaction lag, background migration, and replicated safety copies can silently shrink the space available for new samples.
+
 An effective observation layer should expose confidence and delay metadata for each signal. Control policies that treat delayed telemetry as current truth are a major source of oscillation. Survey authors should document this explicitly when summarizing papers with online control claims.
 
-\subsubsection{Blueprint Layer 3: Boundary Model and Decision Kernel}
+\subsubsection{Boundary Model and Decision Kernel}
 
 The decision kernel should consume state catalog and observation streams to build boundary-aware decisions. A useful abstraction is a constrained optimizer with two classes of inputs: hard constraints (SLA, quality floor, memory limit) and soft objectives (throughput, energy efficiency, migration overhead). The kernel can be heuristic, model-based, or learned, but it should always produce auditable decisions and confidence estimates.
 
 For systems papers, this is where many contributions differ: some improve signal quality, some improve model accuracy, some improve solver latency, and some improve safety under uncertainty. Presenting those differences through one decision-kernel abstraction makes cross-paper comparison much cleaner.
 
-\subsubsection{Blueprint Layer 4: Actuation Interfaces}
+\subsubsection{Actuation Interfaces}
 
 Actuation interfaces should be explicit and idempotent where possible. Typical actions include repartition, migrate, remap, resize memory tier, adjust admission threshold, trigger compaction, or change retention window. Idempotence and bounded rollback are important because control loops may reissue actions under noisy telemetry.
 
+Recent retrieval and retention lines suggest two additional actuation classes deserve first-class treatment. One is shard-exposure control: the runtime may need to mark a partially refreshed retrieval shard as queryable only for internal warmup, delayed publication, or restricted traffic classes. The other is tier-demotion control: under budget contraction, the runtime may need to summarize, compress, or temporarily demote retention objects instead of making an immediate drop-or-keep decision. These are not implementation details; they are policy-visible actions that materially change user-facing quality.
+
 Systems that expose only monolithic reconfiguration APIs tend to react too slowly under real-time pressure. Fine-grained actuation paths improve responsiveness but require careful conflict handling when multiple policies target overlapping state objects.
 
-\subsubsection{Blueprint Layer 5: Safety and Recovery Envelope}
+\subsubsection{Safety and Recovery Envelope}
 
 A stateful system is incomplete without an explicit safety envelope: invariants that must hold during and after control actions. Examples include bounded replay lag, consistency constraints on shared indexes, or no-eviction sets during critical decode windows. Recovery should be integrated into the same envelope, not treated as a separate mode.
 
+For the retrieval and retention cases emphasized in this survey, two invariants are especially important. First, freshness exposure contracts should specify when a shard may be served despite ongoing rebuild, compaction, or deletion repair. Second, retention demotion contracts should specify which memories are compressible, summarizable, or protected when effective budget drops suddenly. Without these invariants, systems can satisfy local maintenance logic while still violating user-visible correctness or quality assumptions.
+
 The survey literature repeatedly suggests that performance and recovery cannot be cleanly separated once state is dynamic~\cite{chandy1985snapshot,schneider1990state,zhao2024recovery}. Blueprint implementations should therefore evaluate control actions against both steady-state and recovery invariants.
+
+\begin{table*}[t]
+\small
+\caption{Mapping recurring anti-patterns to the blueprint contracts that repair them.}
+\label{tab:antipattern-blueprint}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.22\textwidth}>{\raggedright\arraybackslash}p{0.26\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}Y}
+\toprule
+Anti-pattern & Missing contract & Primary blueprint layer & Expected design effect \\
+\midrule
+Telemetry-action mismatch & signals must name a legal actuation target and its delay/confidence semantics & observation and disturbance detection & dashboards become control inputs rather than passive monitoring \\
+Policy layering without conflict semantics & hard constraints, soft objectives, and tie-breakers must be ordered explicitly & boundary model and decision kernel & overlapping controllers stop oscillating under burst or skew \\
+One-shot benchmarking of non-stationary mechanisms & disturbance phases and re-stabilization windows must be part of the contract & observation plus safety and recovery envelope & reported gains remain meaningful outside stationary replay \\
+Ignoring write amplification in read-optimized designs & mutation, compaction, deletion repair, and maintenance debt must be charged to the same boundary as read gains & state catalog plus actuation interfaces & deferred rebuild or compaction cost becomes visible during design review \\
+Treating state ownership as static & ownership transfer and no-eviction rules must survive migration and recovery & actuation interfaces plus safety and recovery envelope & scale-out and fault handling share one transferable state model \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+This mapping also clarifies why the case studies that follow are intentionally operational rather than paper-by-paper. Each case is a stress test for whether the blueprint closes one or more anti-patterns under a concrete service boundary. The cases are therefore not examples appended after the real argument; they are the first place where the survey's design claims become falsifiable.
 
 \begin{table*}[t]
 \small
@@ -450,12 +705,12 @@ The survey literature repeatedly suggests that performance and recovery cannot b
 \toprule
 Step & Policy skeleton \\
 \midrule
-1 & \texttt{observe\_signals()} and update telemetry confidence for contention, queueing, freshness, and retention pressure. \\
-2 & \texttt{identify\_state\_objects()} whose boundary is currently active: hot operator shards, KV pages, retrieval indexes, or replay buffers. \\
-3 & \texttt{check\_hard\_constraints()} for SLA, memory limit, recovery envelope, and quality floor before any optimization action. \\
-4 & \texttt{rank\_actions()} over admit, place, migrate, refresh, compact, and evict using expected utility and maintenance debt. \\
+1 & \texttt{observe\_signals()} and update telemetry confidence for contention, queueing, local freshness, exposure freshness, and retention pressure. \\
+2 & \texttt{identify\_state\_objects()} whose boundary is currently active: hot operator shards, KV pages, retrieval indexes, replay buffers, or demotion candidates. \\
+3 & \texttt{check\_hard\_constraints()} for SLA, memory limit, recovery envelope, shard-exposure safety, and quality floor before any optimization action. \\
+4 & \texttt{rank\_actions()} over admit, place, migrate, refresh, compact, expose, demote, and evict using expected utility and maintenance debt. \\
 5 & \texttt{apply\_bounded\_action()} with explicit rollback or retry semantics when telemetry is delayed or conflicting. \\
-6 & \texttt{account\_outcome()} by charging the decision against tail latency, quality drift, and long-horizon reuse value. \\
+6 & \texttt{account\_outcome()} by charging the decision against tail latency, quality drift, effective budget loss, and long-horizon reuse value. \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -464,7 +719,7 @@ Step & Policy skeleton \\
 
 To make the framework concrete, we provide three cross-domain case studies. Each case maps a practical scenario to the scaffold and blueprint described above.
 
-\subsubsection{Case Study A: Multi-Tenant LLM Serving with Burst Arrival}
+\subsubsection{Multi-Tenant LLM Serving Under Burst Arrival}
 
 \textbf{Scenario.} A serving cluster handles mixed prompt lengths, intermittent bursts, and strict p99 latency targets. The runtime currently uses static batching and simple memory caps.
 
@@ -476,9 +731,9 @@ To make the framework concrete, we provide three cross-domain case studies. Each
 
 \textbf{Boundary model.} Hard constraints: p99 latency and memory safety. Soft objective: maximize stable throughput. Disturbance signal: phase imbalance and fragmentation slope.
 
-\textbf{Expected lessons.} Improvements come less from one faster kernel and more from coherent lifecycle control of short-lived state~\cite{kwon2023pagedattention,agrawal2024sarathi,holmes2024fastgen}. Policies that optimize only allocation or only scheduling tend to plateau early.
+\textbf{Expected lessons.} Improvements come less from one faster kernel and more from coherent lifecycle control of short-lived state~\cite{kwon2023pagedattention,agrawal2024sarathi,holmes2024fastgen}. Policies that optimize only allocation or only scheduling tend to plateau early. From the anti-pattern perspective, this case primarily tests whether telemetry triggers real actuation and whether admission, phase control, and reclamation obey one precedence order instead of competing heuristics.
 
-\subsubsection{Case Study B: Stateful Stream Processing Under Reconfiguration}
+\subsubsection{Stateful Stream Processing Under Reconfiguration}
 
 \textbf{Scenario.} A stream engine must scale out during bursts and recover quickly from worker failure while maintaining bounded latency.
 
@@ -490,262 +745,81 @@ To make the framework concrete, we provide three cross-domain case studies. Each
 
 \textbf{Boundary model.} Hard constraints: correctness and recovery objective. Soft objective: minimize latency amplification during migration.
 
-\textbf{Expected lessons.} Treating elasticity and fault handling as shared state-transfer problems yields better stability than implementing them as separate subsystems~\cite{nasir2019megaphone,fernandez2013osm,zhao2024recovery}.
+\textbf{Expected lessons.} Treating elasticity and fault handling as shared state-transfer problems yields better stability than implementing them as separate subsystems~\cite{nasir2019megaphone,fernandez2013osm,zhao2024recovery}. This is the clearest test of the ownership anti-pattern: a runtime either preserves explicit transfer contracts across scale-out and replay, or it rediscovers the same instability under a different trigger.
 
-\subsubsection{Case Study C: Retrieval Memory with Continuous Corpus Drift}
+\subsubsection{Retrieval Memory Under Continuous Corpus Drift}
 
 \textbf{Scenario.} A RAG service ingests frequent content updates and must preserve answer quality without full index rebuilds.
 
-\textbf{State objects.} vector index, late-interaction caches, graph memory, retention metadata.
+\textbf{State objects.} vector index shards, late-interaction caches, graph memory, shard exposure metadata, retention metadata.
 
-\textbf{Control surfaces.} incremental indexing policy, refresh cadence, compaction schedule, stale-memory eviction.
+\textbf{Control surfaces.} incremental indexing policy, refresh cadence, compaction schedule, shard exposure policy, stale-memory eviction.
 
 \textbf{Coupling path.} Aggressive updates improve freshness but can destabilize retrieval quality and query latency due to index churn.
 
-\textbf{Boundary model.} Hard constraints: quality floor and uptime. Soft objective: reduce amortized update cost.
+\textbf{Boundary model.} Hard constraints: quality floor, shard-exposure safety, and uptime. Soft objective: reduce amortized update cost.
 
-\textbf{Expected lessons.} Retrieval quality and system cost should be evaluated jointly across long horizons; short static evaluations understate lifecycle debt~\cite{karpukhin2020dpr,khattab2020colbert,wang2024hipporag,zhang2026flowrag}.
+\textbf{Expected lessons.} Retrieval quality and system cost should be evaluated jointly across long horizons; short static evaluations understate lifecycle debt~\cite{karpukhin2020dpr,khattab2020colbert,wang2024hipporag,zhang2026flowrag}. In anti-pattern terms, this case checks whether the design can expose write amplification and maintenance debt early enough to trigger refresh, compaction, delayed shard exposure, or stale-memory eviction before quality collapse appears at the service boundary.
 
-\subsection{Methodological Notes on Survey Synthesis}
+\section{Evaluation and Research Outlook}
 
-To keep cross-domain synthesis coherent, we use a consistent integration protocol.
+\subsection{Evaluation Dimensions for Future Surveys and Systems}
 
-\paragraph{Step 1: Paper Intake and Typing}
+An enduring weakness of the area is evaluation fragmentation. Access papers often report throughput and contention reduction, execution papers report speedup or energy savings, and evolution papers report quality or forgetting. These are all important, but they make it hard to compare whether two systems are solving the same problem at different phases of the loop or genuinely addressing different control surfaces. A more coherent evaluation vocabulary should at least track four dimensions.
 
-Each candidate paper should be typed by state object, control surface, and boundary metric before prose integration. Papers that cannot be typed should remain in a backlog list until clarified.
+The first dimension is \emph{steady-state efficiency}, including throughput, amortized cost per useful result, and locality-sensitive resource use. The second is \emph{tail behavior}, including percentile latency, burst amplification, and recovery delay. The third is \emph{state quality}, including bounded approximation error, retrieval quality under drift, and retention value under memory budgets. The fourth is \emph{operational sustainability}, including migration cost, update overhead, and how quickly a control loop re-stabilizes after workload or hardware changes. Systems that score well on only one dimension can still be valuable, but they should be described as local improvements rather than full state-management solutions.
 
-\paragraph{Step 2: Mechanism Grouping Before Writing}
-
-Papers should be grouped by mechanism family, not venue chronology. Typical families include migration control, memory reclamation, phase-aware scheduling, retrieval index maintenance, and quality-bounded approximation.
-
-\paragraph{Step 3: Comparative Paragraph Minimum}
-
-A subsection extension should contain at least one comparative paragraph that contrasts two or more mechanisms under a shared boundary. Purely additive summaries are insufficient for a survey article targeting CSUR standards.
-
-\paragraph{Step 4: Gap Statement and Testable Claim}
-
-Every new subsection should end with a gap statement and one testable systems claim. This ensures the survey remains analytically forward-looking rather than encyclopedic.
-
-\paragraph{Step 5: Reproducibility Checks}
-
-Before accepting new content, authors should verify citation resolution, terminology consistency, and section-level boundary clarity. A practical checklist is: (1) no undefined references, (2) no duplicate concept aliases without mapping, (3) each paragraph ties mechanism to boundary.
-
-\subsection{Analytical Maturity}
-
-\subsubsection{Cross-Layer Mechanism Synthesis}
-
-Across access, execution, and evolution, the literature shows a shared systems pattern: local policy gains often disappear once effects propagate through the state lifecycle. In streaming systems, fine-grained synchronization and partitioning can improve multicore scalability~\cite{zhang2017revisiting,zhang2020concurrent}, yet these gains degrade when topology and locality are not co-optimized~\cite{zhang2019briskstream}. Hardware-conscious lines similarly show that movement and representation of state can dominate kernel-level arithmetic gains~\cite{zhang2020finestream,zeng2024cstream}.
-
-Inference runtimes exhibit the same mechanism. Paged KV management and reuse-aware serving turn memory from an implementation detail into an explicit control object~\cite{kwon2023pagedattention,zheng2023sglang}. However, allocator improvements alone are insufficient when phase asymmetry between prefill and decode remains unscheduled~\cite{agrawal2024sarathi,holmes2024fastgen}. This mirrors transactional stream findings where stable behavior requires dependency-aware online control rather than static plans~\cite{mao2023morphstream}.
-
-Approximation and retrieval lines reinforce boundary-first design. Approximate kernels and compensation mechanisms are sustainable only when quality floors are integrated into runtime decisions~\cite{zeng2024pecj,zeng2024libamm}. In long-horizon retrieval and retention systems, update and maintenance policies directly shape downstream quality-cost trajectories~\cite{zhou2025ferret,zhang2026flowrag}. Without explicit boundary models, systems accumulate maintenance debt that later erases short-run gains.
-
-Recovery and elasticity also converge into one state-transfer problem. Snapshotting, migration, and recovery acceleration are most robust when they share transfer semantics and observability channels instead of being isolated subsystems~\cite{carbone2015asynchronous,fernandez2013osm,zhao2024recovery}. This suggests a unified control-plane abstraction for ownership transfer across steady-state and failure-time operation.
-
-The strongest cross-domain principle is therefore state-as-scheduling-object. Instead of scheduling tasks over passive data, modern runtimes schedule around mutable state objects (KV pages, operator shards, retrieval structures, retention buffers), and then map compute accordingly~\cite{zheng2023sglang,zhong2024distserve,patel2024splitwise}. Explicit lifecycle stages (admit, place, mutate, compact, reclaim) make closed-loop governance feasible.
-
-Persistent unresolved mechanism gaps include:
-\begin{enumerate}[leftmargin=*]
-\item high-fidelity observability for semantic state conflicts beyond coarse counters;
-\item cross-tier lifecycle coordination for short-lived and long-lived memory objects;
-\item policy-composition semantics that prevent oscillation under overlapping triggers;
-\item long-horizon accounting of maintenance debt and reuse-value decay.
-\end{enumerate}
-
-\subsubsection{Evaluation Protocols and Threats to Validity}
-
-Evaluation should treat state management as closed-loop control, not isolated optimization. Each experiment should explicitly specify the state object, control surface, and service boundary before reporting outcomes. This prevents local speedups from being misread as end-to-end gains when lifecycle paths remain unchanged~\cite{kwon2023pagedattention,agrawal2024sarathi,zheng2023sglang,mao2023morphstream}.
-
-Disturbance-driven evaluation is required. Stationary replay alone hides instability that appears under burst, skew, and phase transitions. Protocols should fix random seeds, preserve disturbance timestamps, and report both phase-local and aggregate outcomes so inflection points are auditable~\cite{zhang2019briskstream,zhang2020concurrent}.
-
-A minimal protocol suite should include:
-\begin{enumerate}[leftmargin=*]
-\item \textbf{burst disturbance}: short high-intensity arrivals stressing fragmentation and queue growth;
-\item \textbf{skew disturbance}: popularity flips testing migration and reuse stability;
-\item \textbf{topology disturbance}: controlled device/NUMA perturbations isolating movement sensitivity;
-\item \textbf{semantic disturbance}: update drift probing retention and index-evolution coupling.
-\end{enumerate}
-
-Long-horizon metrics are necessary when claims involve reuse or adaptation: reuse survival, reclamation debt, update-to-benefit lag, post-shock recovery half-life, and quality-retention trajectories. These reveal delayed regressions that short-window throughput cannot capture~\cite{kwon2023pagedattention,zhou2025ferret,zhang2026flowrag}.
-
-Coupling-aware ablations should be standard. Components must be evaluated not only marginally but also under interaction terms (access-only, execution-only, evolution-only, joint), because many gains emerge only when controls are coordinated~\cite{mao2023morphstream,zeng2024cstream,zeng2024pecj}.
-
-Negative results should be first-class evidence. Reports should include boundary failures, sign reversals (for example, higher reuse but worse p99), and oscillation windows under disturbance. This avoids survivorship bias and tightens claim scope to measured envelopes~\cite{zhang2020concurrent,zeng2024pecj,wu2023sentistream}.
-
-Threats to validity should be operationalized as constraints: internal validity via seed/time control and warmup policy; construct validity via strict separation of overlap opportunity vs realized reuse; external validity via multi-regime and topology-perturbed replication. Claims should remain bounded to tested disturbance and lifecycle horizons.
-
-\subsubsection{Research Agenda Beyond Isolated Policy Tuning}
-
-The next stage of progress is architectural rather than heuristic: state must become the central abstraction across streaming, serving, retrieval, and retention systems. Isolated policy tuning can improve local regimes, but cross-layer instability persists when lifecycle governance is fragmented~\cite{zhang2019briskstream,mao2023morphstream,kwon2023pagedattention,agrawal2024sarathi}.
-
-First, future runtimes need unified state-lifecycle observability that links low-level contention with service-level quality drift~\cite{zhang2017revisiting,zhang2020concurrent,zhang2026flowrag}. Without path-level telemetry, controllers cannot estimate deferred costs created by current decisions.
-
-Second, state-centric scheduling should supersede task-centric scheduling on heterogeneous hardware. Placement, phase control, and quality-bounded approximation must be coordinated over one state-transition graph that includes compute and memory tiers~\cite{agrawal2024sarathi,zhong2024distserve,zeng2024pecj,zeng2024libamm}.
-
-Third, memory middleware is needed for dynamic AI services. Existing methods provide strong model-centric mechanisms but weak shared systems interfaces for admission, retention, refresh, and compaction across ephemeral and persistent memory objects~\cite{kirkpatrick2017ewc,lopez2017gem,guu2020realm,lewis2020rag,wang2024hipporag}.
-
-Fourth, recovery semantics should be integrated into steady-state control. Throughput-oriented mutation and placement decisions must be constrained by explicit recovery-time envelopes so optimization does not accumulate unrecoverable state debt~\cite{carbone2015asynchronous,fernandez2013osm,zhao2024recovery}.
-
-Fifth, the community needs policy-composition semantics. As controllers for compression, reuse, quality bounds, and admission accumulate, precedence and conflict resolution must be formalized to prevent oscillation under non-stationary load~\cite{zeng2024cstream,zeng2024pecj,zheng2023sglang}.
-
-Finally, benchmark norms should shift from short-run peak gains to lifecycle stability under disturbance and drift, including explicit negative/neutral outcomes and maintenance-debt accounting~\cite{wang2026candor,zhou2025ferret}. This transition from isolated mechanisms to integrated governance is the most direct path toward robust stateful infrastructure.
-
-\subsection{Cross-Domain Comparative Synthesis}
-
-This section deepens the survey with domain-specific comparative maps. Each map answers the same three questions: which state object dominates in the domain, which runtime controls are mature, and which control seams remain under-developed.
-
-\subsubsection{Map I: Streaming and Transactional Dataflows}
-
-Streaming and transactional dataflow systems share a core tension: they want low-latency updates over mutable shared state while preserving deterministic recovery and bounded operational overhead. From early stream engines to modern transactional stream processors, the visible progress has largely come from making state transitions explicit in the runtime rather than hidden in operator code paths~\cite{abadi2003aurora,murray2013naiad,mao2023morphstream}.
-
-The earliest seam was explicit transition semantics. Aurora and Borealis treated operator graphs and adaptation paths as runtime-managed artifacts, while MillWheel, Naiad, and Dataflow elevated event time, pending work, watermarks, and partial-order progress into the control plane rather than leaving them as hidden bookkeeping~\cite{abadi2003aurora,abadi2005borealis,akidau2013millwheel,murray2013naiad,akidau2015dataflow}. This shift matters because it separates two questions that older runtimes often conflated: whether an update is logically visible, and whether the corresponding state is physically stable enough to migrate, checkpoint, or replay.
-
-A second precursor seam is progress-aware state advancement. Trill, Differential Dataflow, Flink, and StreamCloud each made a different part of that seam visible: incremental maintenance state, frontier or timestamp progression, and elastic ownership transfer all determine whether state can be updated continuously without turning coordination into a hidden bottleneck~\cite{chandramouli2014trill,murray2013differential,carbone2015flink,gulisano2012streamcloud}. This family matters because it frames access scheduling not only as conflict management, but also as safe progress over partially materialized state.
-
-A first mature control seam is access topology. Systems that explicitly reason about locality, key skew, and synchronization surfaces achieve more stable behavior than those optimizing only per-operator throughput~\cite{zhang2019briskstream,zhang2020concurrent}. The key lesson is that contention and locality are endogenous: scheduling decisions reshape them, and measurement must feed back into scheduling.
-
-These topology decisions are not independent from fault handling. They define where barriers accumulate, which partitions replay together, and how much skew migration must absorb during reconfiguration. In that sense, access topology already encodes a latent recovery policy even before the runtime exposes one explicitly~\cite{zhang2019briskstream,zhang2020concurrent,carbone2015asynchronous,zhao2024recovery,mao2025spacker}.
-
-A second mature seam is recovery coupling. Recovery is no longer a pure failure-mode concern; it is a steady-state design partner. Asynchronous snapshotting showed early that checkpoint alignment is not passive bookkeeping: the runtime must coordinate barriers, in-flight state, and snapshot boundaries so that fault tolerance remains lightweight during normal operation~\cite{carbone2015asynchronous}. Recent recovery work extends that logic to multicore transactional streaming, where replay scheduling and recovery metadata must be co-designed with the steady-state execution plan~\cite{zhao2024recovery}. Checkpoint cadence, log granularity, and migration mechanism therefore jointly define whether latency remains bounded during faults and reconfiguration. Systems that isolate these concerns administratively often pay duplicated state-transfer overhead.
-
-A third seam is elasticity with state ownership transfer. The best-known failure mode is scaling compute capacity without designing explicit ownership transfer contracts for state. Elasticity then appears successful in microbenchmarks but unstable in long-running mixed workloads. Operator-state-management lines make this tradeoff visible and suggest that scale-out and fault tolerance should share a common state-transfer substrate~\cite{fernandez2013osm,nasir2019megaphone}.
-
-Open gaps remain significant. Most systems still under-model multi-tenant interference where contention surfaces change with tenant mix rather than input rate alone. Another recurring gap is weak support for semantic state objects (for example, dynamic retrieval caches in stream-adjacent applications), where access conflicts are not purely key-based and cannot be managed by partitioning alone.
-
-\subsubsection{Map II: Hardware-Conscious and Approximate Stateful Execution}
-
-Hardware-conscious systems established that stateful efficiency depends on movement and representation choices as much as arithmetic intensity. Fine-grained CPU/GPU coordination, dictionary-aware processing, and compression-aware scheduling illustrate this shift~\cite{zhang2020finestream,zeng2024cstream}. The domain's strongest contributions expose state representation as a runtime control surface rather than a static storage decision.
-
-Approximation-aware systems add a boundary model that is still underused outside their subcommunity. Mechanisms such as proactive compensation, adaptive sampling, and approximate matrix kernels are valuable because they couple quality boundaries to runtime cost decisions~\cite{zeng2024pecj,tang2025freesam,zeng2024libamm}. Without this coupling, approximation can improve local throughput while degrading user-level utility.
-
-The map suggests two cross-domain lessons. First, state representation should be treated as a dynamic control variable (switchable compression level, adaptive summary fidelity, selective decompression path) rather than a compile-time parameter. Second, quality budgets must be first-class citizens in scheduling, not post-hoc validation checks.
-
-Open gaps include weak portability of policy tuning across hardware topologies and limited integration between approximation control and recovery semantics. A system may know how to bound error during normal operation but may not define what error contract holds during recovery or reconfiguration.
-
-\subsubsection{Map III: LLM Serving and Short-Lived Memory Lifecycles}
-
-LLM serving has made state-lifecycle management impossible to ignore. KV caches, prefix-sharing structures, phase-skewed queues, and increasingly multiplexed model-state layers now dominate runtime behavior in many deployments~\cite{kwon2023pagedattention,agrawal2024sarathi,li2023alpaserve,chen2024punica}. This domain has progressed rapidly because it translated memory overhead into an explicit scheduling and admission problem rather than a hidden allocator concern.
-
-One mature seam is orchestration and predictability. Clipper externalized batching, caching, and model-choice policy, while Clockwork turned execution-time predictability into a dispatchable control signal for request isolation and SLO management~\cite{crankshaw2017clipper,gujarati2020clockwork}. A second seam is memory layout and allocation policy. Paging-style approaches and explicit sharing surfaces improved memory efficiency and therefore expanded feasible batching regions~\cite{kwon2023pagedattention}. A third seam is phase-aware control: separating prefill and decode characteristics exposes different bottlenecks and enables targeted scheduling and placement actions~\cite{agrawal2024sarathi,zhong2024distserve,patel2024splitwise}. A fourth seam is control-plane and tenant-aware governance: Nexus made cluster occupancy and batching a first-class scheduling surface, InferLine and INFaaS showed that queue state, provisioning decisions, and heterogeneous replica choice already form a serving control loop around latency objectives, FlexGen made offload placement part of the memory lifecycle, and Punica plus AlpaServe showed that adapter state and partitioned model state introduce additional multiplexed memory layers whose isolation and sharing policies materially change utilization and interference~\cite{shen2019nexus,crankshaw2020inferline,romero2021infaas,sheng2023flexgen,chen2024punica,li2023alpaserve}.
-
-The harder systems case appears when these seams interact at cluster scale. DistServe, Splitwise, and FastGen show that separating prefill from decode is useful precisely because the two phases stress different resources, but Punica and AlpaServe make clear that the state being routed is not just generic KV memory: it often carries tenant-specific adapters, partition metadata, and multiplexing constraints whose residency rules change interference patterns~\cite{zhong2024distserve,patel2024splitwise,holmes2024fastgen,chen2024punica,li2023alpaserve}. Read together with Nexus, InferLine, and INFaaS, the design implication is that short-lived serving state already lives under a cluster-level governance loop of occupancy signals, queue backpressure, provisioning decisions, and admission control~\cite{shen2019nexus,crankshaw2020inferline,romero2021infaas}. Future runtimes should therefore treat phase splitting and tenant multiplexing as a joint optimization problem: they must decide where prefill state is created, which decode path inherits it, and when adapter or model-partition placement should override raw batching efficiency to preserve tail latency and isolation.
-
-Structured-program serving adds a further layer: runtime-managed reuse boundaries across multi-call workflows, constrained decoding, and retrieval subcalls~\cite{zheng2023sglang}. In these settings, state lifecycle is no longer per-request only; it includes reusable intermediate objects whose value depends on program structure.
-
-Open gaps include cross-node lifecycle coordination for short-lived state, explicit global admission policies that anticipate cross-phase transfer and tenant interference, benchmark protocols that cover disturbance phases (burst, warmup, drift), and principled integration between serving memory control and retrieval-memory updates. Most evaluations still optimize one layer at a time.
-
-\subsubsection{Map IV: Retrieval Memory and Vector-Index State Layers}
-
-Retrieval systems moved from lexical inverted indexes to dense and hybrid memory substrates where indexing, refresh, and serving are tightly coupled state problems~\cite{karpukhin2020dpr,khattab2020colbert,guu2020realm,lewis2020rag}. The key architectural transition is from "querying documents" to "maintaining a living memory layer" with explicit update and compaction debt.
-
-One mature mechanism family is external-memory orchestration. REALM, RAG, RETRO, and Atlas differ in training setup and scale, but all treat the indexed corpus as a reusable state layer whose refresh path and lookup boundary materially influence downstream quality~\cite{guu2020realm,lewis2020rag,borgeaud2022retro,izacard2022atlas}. A second family is index-structure control. Dense dual-encoder systems improved retrieval quality and throughput tradeoffs, while late-interaction approaches preserved richer matching signals with manageable online cost by shifting computation between offline and online phases; product quantization and HNSW, in turn, show that compressed codes and graph topology are not mere implementation details but runtime controls over recall, latency, and memory footprint~\cite{karpukhin2020dpr,khattab2020colbert,jegou2011pq,malkov2020hnsw}. A third family is structured long-horizon memory. Graph- and hierarchy-enhanced approaches such as HippoRAG and RAPTOR push the domain toward memory models that better capture multi-hop and evolving knowledge dependencies, but they also introduce explicit maintenance debt in graph rewiring, abstraction refresh, and stale-structure cleanup~\cite{wang2024hipporag,sarthi2024raptor}.
-
-A fourth family is planner-mediated index governance. Self-RAG makes retrieval invocation itself a runtime control decision rather than a fixed pipeline stage, but that decision only remains meaningful when the runtime also understands whether the underlying memory layer is stale, fragmented, or temporarily expensive to refresh~\cite{asai2024selfrag}. FlowRAG and CANDOR-Bench expose the next step in that control loop: once corpora and ANN structures evolve continuously, the dominant tradeoff is no longer simply retrieve versus do not retrieve, but whether to query a stale index, pay immediate rebuild or compaction cost, or defer maintenance and absorb future quality drift~\cite{zhang2026flowrag,wang2026candor}. Read together with PQ and HNSW, these systems suggest that planner decisions, compression policy, graph maintenance, and rebuild cadence are all part of one governance problem rather than separate offline and online concerns~\cite{jegou2011pq,malkov2020hnsw}.
-
-For systems researchers, the central insight is that retrieval quality is a lifecycle property, not just a model property. Refresh cadence, planner-triggered retrieval policy, index maintenance policy, compression choice, stale-memory eviction, and continuous-ANNS maintenance under churn govern long-term quality-cost balance as strongly as encoder architecture~\cite{asai2024selfrag,wang2026candor,zhang2026flowrag}.
-
-Open gaps include unified treatment of dense, compressed, graph, hierarchical, and planner-mediated memory objects in one control plane, explicit trigger policies for when planners should tolerate staleness versus request rebuilds, and stronger operational metrics that connect refresh, rebuild, and compaction decisions to end-to-end service SLOs rather than isolated retrieval scores.
-
-\subsubsection{Map V: Continual Learning and Retention Governance}
-
-Continual-learning systems contribute a mature language for retention under bounded memory. Constraint-based methods such as EWC treat previously learned parameters as protected state, while GEM and A-GEM reinterpret an episodic buffer plus gradient projection as a runtime control over update interference~\cite{kirkpatrick2017ewc,lopez2017gem,chaudhry2019agem}. Replay-centric methods shift the control surface again: experience replay, MIR, DER, and GDumb all assume that bounded historical memory is inevitable, then ask which samples should be admitted, replayed, distilled, or retained to maximize future utility rather than merely preserve recency~\cite{rolnick2019experience,aljundi2019mir,buzzega2020der,prabhu2020gdumb}. REMIND adds a representation-level variant by showing that feature-space replay and lightweight reconstruction can make retention cheaper without eliminating the underlying state-budget problem~\cite{hayes2020remind}. Read together, these papers formalize retention as a governed state problem in which the runtime must decide what historical signal is worth protecting, how it is stored, and when it should influence future updates.
-
-The strongest mechanisms therefore expose three reusable control surfaces: protected parameter state, episodic buffer selection, and replay-time representation compression or distillation. Their common lesson is that stable adaptation depends on explicit interference control and budget-aware admission policies rather than on unconstrained online updates. This perspective is highly relevant to retrieval and serving systems that increasingly maintain evolving memory under strict resource constraints.
-
-What the literature still under-articulates, but increasingly implies, is a retention-store governance problem. EWC treats the protected set as a scarce budgeted object, GEM and A-GEM make replay eligibility a runtime choice under interference constraints, MIR and GDumb show that admission policy can dominate eventual retained quality, and DER plus REMIND turn representation storage itself into a maintenance surface rather than a free byproduct~\cite{kirkpatrick2017ewc,lopez2017gem,chaudhry2019agem,aljundi2019mir,prabhu2020gdumb,buzzega2020der,hayes2020remind}. Read together, these systems suggest that continual retention should be compared the same way we now compare retrieval indexes or serving caches: not only by accuracy outcomes, but also by how the runtime budgets storage, ranks future utility, compacts stale state, and accounts for maintenance debt over long-lived service horizons.
-
-Open gaps include system-level integration: many continual-learning methods remain model-centric and do not specify operational semantics for distributed retention stores, update fault handling, or cross-service consistency. A second gap is lifecycle accounting: the literature is strong on forgetting metrics but much weaker on maintenance overhead, refresh debt, and retention-store behavior under long-running multi-tenant service conditions.
-
-Figure~\ref{fig:memory-planes} summarizes why these later sections belong together. Serving memory, retrieval memory, and retention stores have different lifetimes, but they all revolve around the same systems question: how a runtime uses shared telemetry and service boundaries to decide which state to admit, refresh, compact, or preserve.
+Figure~\ref{fig:disturbance-protocol} turns this vocabulary into a compact evaluation protocol. The key shift is from one-shot benchmarking to multi-phase disturbance testing: warmup, burst, reconfiguration, drift, and long-horizon maintenance should be treated as one connected experiment rather than separate appendices.
 
 \begin{figure*}[t]
 \centering
-\resizebox{0.96\textwidth}{!}{\input{figures/memory_governance_planes}}
-\caption{Memory governance planes across serving, retrieval, and continual retention. The state objects differ in lifetime and granularity, but the control loop is structurally similar: shared telemetry feeds admission or rebuild decisions, and those decisions feed back into future latency, freshness, and reuse value.}
-\label{fig:memory-planes}
+\resizebox{0.94\textwidth}{!}{\input{figures/disturbance_evaluation_protocol}}
+\caption{A disturbance-oriented evaluation protocol for stateful systems. The same mechanism should be judged across steady-state, burst, reconfiguration, drift, and long-horizon maintenance phases rather than only on a single stationary run.}
+\label{fig:disturbance-protocol}
 \end{figure*}
 
-\subsubsection{Comparative Mechanism Matrices}
+For survey authors, this evaluation vocabulary provides a way to compare systems without flattening their contributions. A streaming scheduler and a dynamic retriever may report different headline metrics, yet both can be judged by whether they expose a stable state object, define an optimization boundary around it, and connect local policy decisions to long-horizon system behavior. That comparability is one reason the state-management perspective is useful beyond any single subcommunity.
 
-The following long-form matrices make cross-domain comparison explicit at scale and complement the narrative synthesis with structured side-by-side evidence.
+\subsection{An Integrated Research Agenda}
 
-\begingroup
-\setlength{\tabcolsep}{3pt}
-\footnotesize
-\renewcommand{\arraystretch}{1.08}
+The design implications above can be distilled into four forward-looking priorities for stateful infrastructure.
 
-\begin{longtable}{>{\raggedright\arraybackslash}p{0.14\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}}
-\caption{Large-scale mechanism matrix across representative papers.}\label{tab:large-matrix-a}\\
-\toprule
-Paper line & Dominant state object & Primary control surface & Evaluated boundary & Extension note \\
-\midrule
-\endfirsthead
-\toprule
-Paper line & Dominant state object & Primary control surface & Evaluated boundary & Extension note \\
-\midrule
-\endhead
-Aurora/Borealis~\cite{abadi2003aurora,abadi2005borealis} & continuous-query operator state & graph adaptation control & streaming throughput/latency & compare with modern migration control \\
-MillWheel/Naiad/Dataflow~\cite{akidau2013millwheel,murray2013naiad,akidau2015dataflow} & keyed window and progress state & time/progress semantics & correctness-latency tradeoff & add reconfiguration stress \\
-Trill/Differential/\newline Flink/StreamCloud~\cite{chandramouli2014trill,murray2013differential,carbone2015flink,gulisano2012streamcloud} & incremental state and progress metadata & frontier progress and elastic ownership & update latency and operability & connect progress with migration/recovery \\
-BriskStream/\newline Concurrent stream~\cite{zhang2019briskstream,zhang2020concurrent} & shared access paths and sync state & topology-aware placement and partitioning & throughput under contention & add multi-tenant hot-key stress \\
-MorphStream~\cite{mao2023morphstream} & transactional dependency state & dependency-aware scheduling & latency/throughput stability & compare with static baselines \\
-Fast recovery line~\cite{zhao2024recovery} & recovery metadata and logs & recovery-integrated control & recovery time and steady-state overhead & unify with migration control \\
-Megaphone/OSM/SEEP~\cite{nasir2019megaphone,fernandez2013osm,fernandez2010seep} & movable state shards & migration and elasticity control & reconfiguration latency & add correctness-envelope taxonomy \\
-FineStream/CStream~\cite{zhang2020finestream,zeng2024cstream} & representation-aware operator state & hardware-conscious mapping + state path design & speed/energy-delay tradeoffs & extend to heterogeneous accelerator mixes \\
-PECJ/LibAMM~\cite{zeng2024pecj,zeng2024libamm} & quality-sensitive intermediate state & approximation and compensation control & bounded quality vs cost & unify with service-level quality floors \\
-vLLM~\cite{kwon2023pagedattention} & paged KV and \newline memory-plane state & allocation, sharing, and \newline lifecycle admission & throughput at latency target & add cluster lifecycle governance \\
-Sarathi-Serve~\cite{agrawal2024sarathi} & phase-skewed serving state & prefill/decode scheduling \newline and batch shaping & throughput-latency frontier & benchmark disturbance and \newline phase migration \\
-SGLang~\cite{zheng2023sglang} & reusable program-\newline structured state & radix reuse and \newline program-boundary control & throughput on structured programs & map mixed-shape \newline cluster governance \\
-Clockwork/Clipper~\cite{gujarati2020clockwork,crankshaw2017clipper} & serving control-plane state & predictability and \newline orchestration control & tail-latency/SLO isolation & tie to lifecycle admission \\
-DistServe/Splitwise/\newline FastGen~\cite{zhong2024distserve,patel2024splitwise,holmes2024fastgen} & disaggregated phase and \newline transfer-queue state & phase split and \newline cluster governance & goodput + tail behavior & unify with tenant-aware admission \\
-Nexus/InferLine/INFaaS/\newline Punica/AlpaServe~\cite{shen2019nexus,crankshaw2020inferline,romero2021infaas,chen2024punica,li2023alpaserve} & multiplexed tenant and \newline control-plane state & admission, provisioning, \newline and isolation control & throughput/cost/\newline SLO stability & unify phase and \newline tenant governance \\
-DPR/ColBERT~\cite{karpukhin2020dpr,khattab2020colbert} & dense and late-interaction retrieval indexes & offline/online retrieval decomposition & retrieval quality vs serving cost & add update/refresh lifecycle dimension \\
-Self-RAG/FlowRAG/\newline CANDOR~\cite{asai2024selfrag,zhang2026flowrag,wang2026candor} & planner and evolving \newline index state & retrieval gating + \newline rebuild control & long-horizon quality/\newline cost balance & add staleness-trigger policy \\
-HippoRAG/\newline FlowRAG~\cite{wang2024hipporag,zhang2026flowrag} & graph-enhanced and evolving \newline retriever memory & dynamic memory \newline evolution control & long-horizon quality \newline and efficiency & add stale-memory debt metrics \\
-Continual memory line~\cite{kirkpatrick2017ewc,lopez2017gem,aljundi2019mir,buzzega2020der,hayes2020remind,prabhu2020gdumb,zhou2025ferret,li2026streamfp} & constrained parameters, \newline replay buffers, and \newline compressed retention state & interference control, \newline replay selection, and \newline retention-store governance & forgetting vs \newline adaptation quality & connect with retrieval index retention, \newline maintenance debt, and distributed stores \\
-Approximate analytics line~\cite{agarwal2013blinkdb,goiri2015approxhadoop,chen2018incapprox} & summary/sample state & accuracy-cost budget control & latency/error boundaries & integrate with modern serving-style SLAs \\
-Spanner/Calvin/FaRM line~\cite{corbett2012spanner,thomson2012calvin,dragojevic2014farm} & distributed transaction state and replication metadata & consistency/placement/concurrency control & correctness + latency + scale & compare with serving memory ownership models \\
-CRDT and replicated-data line~\cite{shapiro2011crdt} & convergent replicated object state & conflict-free merge semantics & convergence and availability & study with retrieval-memory updates \\
-\bottomrule
-\end{longtable}
+\subsubsection{Unified State Observability}
 
-\begin{longtable}{>{\raggedright\arraybackslash}p{0.14\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.18\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}}
-\caption{Evaluation-and-gap matrix across representative state-management clusters.}\label{tab:large-matrix-b}\\
-\toprule
-Cluster & Recommended disturbance tests & Required metrics & Common blind spots & Open research direction \\
-\midrule
-\endfirsthead
-\toprule
-Cluster & Recommended disturbance tests & Required metrics & Common blind spots & Open research direction \\
-\midrule
-\endhead
-State access under skew & hotspot flip, burst tenant switch, rebalance events & throughput, p99, conflict density, migration lag & stationary-load-only evaluation & add workload phase annotations to results \\
-Recovery-integrated scheduling & fail-stop at different load phases, replay stress & recovery time, post-recovery stability, backlog clearance & treating recovery as isolated mode & quantify steady/recovery coupling cost \\
-Elastic stream migration & scale-out/in under active joins/windows & migration overhead, latency amplification, ownership transfer delay & no ownership semantics during transfer & write ownership-state contract subsection \\
-Hardware-conscious execution & topology perturbation and device contention & energy per useful result, latency, quality floor & microbenchmark-centric claims & add end-to-end boundary plots \\
-Approximation control & drift + disorder injection & bounded error, utility loss, throughput & static error assumptions & evaluate adaptive error budgeting \\
-KV cache lifecycle & long prompts + bursty decode + mixed sampling modes & memory waste, reuse ratio, p99, admission drop rate & allocator-only optimization view & add lifecycle-stage breakdown figures \\
-Serving disaggregation & independent pressure on prefill/decode pools & goodput, queue imbalance, transfer overhead & homogeneous-request assumptions & build mixed-length benchmark suite \\
-Structured serving programs & control-flow-heavy prompt programs & reuse hit rate, decode constraint overhead, tail latency & ignoring program-shape diversity & add program-template taxonomy \\
-Retrieval index evolution & continuous corpus updates + stale data injection + ANN churn & recall@k, answer quality, update cost, query latency, freshness lag, compaction debt & one-shot index build assumption & define refresh-compaction-rebuild schedules \\
-Graph memory retrieval & multi-hop drift and conflicting evidence injection & quality robustness, latency, maintenance overhead & no maintenance debt accounting & add graph maintenance cost analysis \\
-Continual retention policies & memory budget sweep with domain shift & forgetting, adaptation speed, retention overhead & model-only reporting without system costs & add retention-store systems metrics \\
-Cross-domain middleware & concurrent serving + retrieval + update workloads & SLA violations, cross-layer backpressure, policy conflicts & layer-by-layer optimization & prototype unified control API discussion \\
-Tiered memory architectures & hot/cold transition storms & promotion accuracy, movement cost, hit/miss latency gap & simplistic hotness heuristics & evaluate prediction-based tiering policies \\
-Quality-bounded serving & quality floor shifts at runtime & quality, latency, throughput, fallback frequency & fixed-quality-threshold assumptions & add dynamic bound adaptation study \\
-Scheduling-policy composition & overlapping policy triggers & oscillation frequency, convergence time, rollback count & no conflict semantics & define policy precedence model \\
-Observability fidelity & delayed/noisy metrics simulation & decision regret, control delay, wrong-action rate & perfect telemetry assumption & add signal-confidence modeling subsection \\
-Admission governance & adversarial burst and tenant unfairness workloads & admission fairness, SLA stability, rejection utility loss & average-only admission metrics & include per-tenant fairness analysis \\
-Long-horizon reuse quality & week-scale synthetic drift phases & quality decay slope, refresh debt, maintenance spikes & short-run benchmark horizon & add multi-phase evaluation protocol \\
-\bottomrule
-\end{longtable}
-\endgroup
+Runtimes should expose shared-state objects, access paths, retention signals, and quality impacts through a common telemetry interface. Today, most systems provide only fragments of this picture.
+
+\subsubsection{State-Centric Scheduling on Heterogeneous Hardware}
+
+Scheduling should jointly consider who accesses state, where the state resides, what quality boundary applies, and whether the state is being evolved concurrently. Such schedulers are especially relevant for intelligent inference stacks on heterogeneous accelerators.
+
+\subsubsection{Memory Middleware for Dynamic AI Services}
+
+Retrieval-augmented generation, continual learning, and agentic services need a memory middleware layer that supports controlled updates, structured retention, and multi-round reuse. The same middleware perspective should eventually cover short-lived serving state such as KV caches and prefix-sharing indices, because these objects already demand explicit policies for admission, sharing, and reclamation. Existing systems provide early building blocks but not yet a stable general abstraction.
+
+That middleware will likely need to span multiple concrete state forms simultaneously: replicated key-value layers for durable control state, vector and late-interaction indexes for semantic retrieval, compressed approximate-nearest-neighbor structures for efficient memory search, and attention-state managers for short-lived per-request reuse~\cite{chang2008bigtable,decandia2007dynamo,karpukhin2020dpr,khattab2020colbert,jegou2011pq,malkov2020hnsw,kwon2023pagedattention,dao2024flashattention2}. The architectural challenge is therefore not just building a larger cache; it is providing a unified control surface across state objects with very different lifetimes, update rules, and quality implications.
+
+\subsubsection{End-to-End Evaluation Beyond Local Speedups}
+
+The field needs more evaluations that connect local mechanisms to service metrics such as tail latency, SLA violations, energy per useful result, forgetting under drift, and long-horizon reuse quality. Without such evaluation, state-management claims risk remaining local rather than infrastructural.
+
+Figure~\ref{fig:runtime-loop} condenses this agenda into one runtime picture. The unifying requirement is not to invent a universal optimizer, but to make state transitions observable enough that multiple optimizers can safely cooperate. In other words, a stateful runtime should know what it is storing, why that state matters, how expensive it is to move or mutate, and what downstream service boundary it affects.
+
+\begin{figure*}[t]
+\centering
+\input{figures/integrated_runtime_loop}
+\caption{Integrated runtime loop for future stateful infrastructure. Observation, boundary modeling, scheduling, and update control should be coupled rather than deployed as isolated policies.}
+\label{fig:runtime-loop}
+\end{figure*}
 
 \section{Conclusion}
 
-This survey argued that state management is the unifying systems problem behind a wide range of modern runtimes. Whether the workload is transactional streaming, hardware-conscious analytics, or dynamic retrieval-augmented inference, the core challenges recur: making shared state observable, controlling access under concurrency, mapping execution onto complex hardware and service boundaries, and evolving memory without destabilizing future reuse.
+This survey argued that state management is the unifying systems problem behind a wide range of modern runtimes. Whether the workload is transactional streaming, hardware-conscious analytics, LLM serving, retrieval-augmented inference, or continual retention, the core challenges recur: making shared state observable, controlling access under concurrency, mapping execution onto complex hardware and service boundaries, and evolving memory without destabilizing future reuse.
 
-The literature already provides strong ingredients for this agenda. Work on contention-aware access and scheduling established the observation-model-control chain for shared state. Hardware-conscious and quality-aware execution studies clarified why stable gains require joint modeling of topology, cost, and service boundaries. Recent work on online updates, continual retention, and dynamic retrieval showed that state evolution and reuse must be treated as first-class systems mechanisms. The key remaining step is integration: future systems should close the loop among access, execution, and evolution, turning state management into the central control plane of long-running services.
+The literature already provides strong ingredients for this agenda. Work on contention-aware access and scheduling established the observation-model-control chain for shared state. Hardware-conscious and quality-aware execution studies clarified why stable gains require joint modeling of topology, movement, cost, and quality boundaries. Recent work on online updates, continual retention, and dynamic retrieval showed that state evolution and reuse must be treated as first-class systems mechanisms rather than application-specific afterthoughts. The comparative syntheses in this survey suggest that these are no longer separate stories: short-lived serving memory, retrieval indexes, replay buffers, compressed operator state, and recovery metadata all behave like runtime-governed state planes with explicit lifecycles.
+
+The practical consequence is that future systems need more than better local heuristics. They need explicit contracts for what state is visible, what boundaries are protected, which actions are legal under disturbance, how overlapping policies compose, and what recovery-time invariants survive reconfiguration. For modern retrieval and retention stacks, this includes concrete semantics for when partially refreshed shards may be exposed to user traffic and how effective retention budget is computed under compaction, demotion, and migration. That is why the anti-pattern taxonomy, blueprint contracts, and disturbance-oriented evaluation protocol belong in the same argument: together they turn state management from a descriptive label into an implementable control discipline.
+
+The key remaining step is integration. Future systems should close the loop among access, execution, evolution, and recovery, turning state management into the central control plane of long-running services. The strongest open systems gap is therefore not one more allocator, scheduler, or retriever update rule in isolation, but a shared runtime substrate that can expose state catalogs, enforce precedence semantics, account for maintenance debt, and keep service-level guarantees stable while memory objects change lifetime, representation, and ownership over time. The integration bar should be judged by contract-level outcomes: whether runtimes can keep exposure freshness auditable across shards, keep retention budgets interpretable under elasticity, and preserve service boundaries while maintenance proceeds continuously in the background.
 
 \begin{acks}
 This draft was seeded from an academic-report storyline and a locally maintained publication archive, then reorganized into a survey taxonomy intended for ACM Computing Surveys. It should be treated as an evolving manuscript rather than a submission-ready version.

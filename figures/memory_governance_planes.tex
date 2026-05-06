@@ -3,7 +3,7 @@
   plane/.style={draw, rounded corners, thick, align=center, minimum width=44mm, minimum height=11mm, fill=black!3},
   control/.style={draw, rounded corners, align=center, minimum width=34mm, minimum height=10mm, fill=black!2},
   side/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=9mm, fill=black!1},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
+  arrow/.style={-{Latex[length=2.5mm]}, thick, shorten <=2pt, shorten >=2pt}
 ]
 
 \node[side] (telemetry) {shared telemetry\\SLOs, drift, budgets};
@@ -15,6 +15,12 @@
 \node[control, right=16mm of serving] (servingc) {admission, placement,\\phase transfer control};
 \node[control, right=16mm of retrieval] (retrievalc) {refresh, rebuild,\\planner-trigger control};
 \node[control, right=16mm of retention] (retentionc) {retention selection,\\compression, compaction};
+\path (telemetry.north) ++(0,8mm) coordinate (highL);
+\path (servingc.north) ++(0,8mm) coordinate (highR);
+\path (telemetry.east) ++(8mm,0) coordinate (midL);
+\path (retrievalc.west) ++(-8mm,0) coordinate (midR);
+\path (telemetry.south) ++(0,-8mm) coordinate (lowL);
+\path (retentionc.south) ++(0,-8mm) coordinate (lowR);
 
 \draw[arrow] (telemetry.east) -- (serving.west);
 \draw[arrow] (telemetry.east) -- (retrieval.west);
@@ -24,9 +30,9 @@
 \draw[arrow] (retrieval.east) -- (retrievalc.west);
 \draw[arrow] (retention.east) -- (retentionc.west);
 
-\draw[arrow, bend left=18] (servingc.north) to node[above, align=center] {queueing, reuse,\\tail-latency feedback} (telemetry.north);
-\draw[arrow, bend right=12] (retrievalc.west) to node[below, align=center] {freshness, staleness,\\maintenance debt} (telemetry.south east);
-\draw[arrow, bend right=22] (retentionc.south) to node[below, align=center] {future utility, forgetting,\\storage pressure} (telemetry.south);
+\draw[arrow] (servingc.north) -- (highR) -- node[midway, above=2pt, align=center, fill=white, inner sep=1pt, font=\small] {queueing, reuse,\\tail-latency feedback} (highL) -- (telemetry.north);
+\draw[arrow] (retrievalc.west) -- node[midway, above=2pt, align=center, fill=white, inner sep=1pt, font=\small] {freshness, staleness,\\maintenance debt} (midR) -- (midL) -- (telemetry.east);
+\draw[arrow] (retentionc.south) -- (lowR) -- node[midway, below=2pt, align=center, fill=white, inner sep=1pt, font=\small] {future utility, forgetting,\\storage pressure} (lowL) -- (telemetry.south);
 
 \draw[arrow, dashed] (serving.south) -- node[right, align=center] {longer-lived reuse\\and update traces} (retrieval.north);
 \draw[arrow, dashed] (retrieval.south) -- node[right, align=center] {persistent value\\and retention policies} (retention.north);

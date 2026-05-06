@@ -2,7 +2,7 @@
   node distance=7mm and 6mm,
   phase/.style={draw, rounded corners, thick, align=center, minimum width=24mm, minimum height=10mm, fill=black!3},
   metric/.style={draw, rounded corners, align=center, minimum width=28mm, minimum height=8mm, fill=black!1},
-  arrow/.style={-{Latex[length=2.5mm]}, thick}
+  arrow/.style={-{Latex[length=2.5mm]}, thick, shorten <=2pt, shorten >=2pt}
 ]
 
 \node[phase] (warmup) {Warmup\\steady state};
@@ -10,6 +10,8 @@
 \node[phase, right=of burst] (reconfig) {Reconfigure\\migrate or fail};
 \node[phase, right=of reconfig] (drift) {Drift\\quality shift};
 \node[phase, right=of drift] (long) {Long horizon\\maintenance debt};
+\path (warmup.north) ++(0,8mm) coordinate (feedbackL);
+\path (long.north) ++(0,8mm) coordinate (feedbackR);
 
 \draw[arrow] (warmup) -- (burst);
 \draw[arrow] (burst) -- (reconfig);
@@ -28,5 +30,5 @@
 \draw[arrow] (drift.south) -- (m4.north);
 \draw[arrow] (long.south) -- (m5.north);
 
-\draw[arrow, bend left=18] (long.north) to node[above, align=center] {policy retuning\\or rebuild trigger} (warmup.north);
+\draw[arrow] (long.north) -- (feedbackR) -- node[midway, above=2pt, align=center, fill=white, inner sep=1pt, font=\small] {policy retuning\\or rebuild trigger} (feedbackL) -- (warmup.north);
 \end{tikzpicture}
