@@ -24,6 +24,8 @@
 \coordinate (split) at (1.8,0.2);
 \coordinate (busR) at (14.2,-3.45);
 \coordinate (busL) at (0.5,-3.45);
+\coordinate (loopR) at ([xshift=8mm]budget.east |- loop);
+\coordinate (loopL) at ([xshift=-10mm]telemetry.west |- loop);
 
 \draw[arrow] (telemetry.east) -- (split);
 \draw[arrow] (split) |- (repr.west);
@@ -38,5 +40,5 @@
 \draw[arrow] (c2.south) -- (n2.north);
 \draw[arrow] (c3.south) -- (n3.north);
 
-\draw[arrow] (n3.east) |- (15.0,3.15) -- (-0.3,3.15) |- (telemetry.north);
+\draw[arrow] (n3.east) -| (loopR) -- (loopL) |- ([xshift=-1.5mm]telemetry.west);
 \end{tikzpicture}
