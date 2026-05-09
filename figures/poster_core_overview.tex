@@ -1,0 +1,54 @@
+\begin{tikzpicture}[
+  domain/.style={draw, rounded corners, thick, align=center, text width=27mm, minimum height=10mm, fill=black!2},
+  state/.style={draw, rounded corners, thick, align=center, text width=44mm, minimum height=16mm, fill=black!4},
+  core/.style={draw, rounded corners, thick, align=center, text width=30mm, minimum height=11mm, fill=black!3},
+  output/.style={draw, rounded corners, thick, align=center, text width=31mm, minimum height=10mm, fill=black!1},
+  base/.style={draw, rounded corners, align=center, text width=154mm, minimum height=10mm, fill=black!1},
+  note/.style={align=center, fill=white, inner sep=1pt, font=\footnotesize},
+  arrow/.style={-{Latex[length=2.5mm]}, thick, shorten <=2pt, shorten >=2pt},
+  dashedarrow/.style={-{Latex[length=2.5mm]}, thick, dashed, shorten <=2pt, shorten >=2pt}
+]
+
+\node[note] at (0,4.65) {representative domains};
+\node[note] at (11.1,4.65) {three core dimensions};
+\node[note] at (17.4,4.65) {what the survey distills};
+
+\node[domain] (stream) at (0,3.0) {Streaming and\\transactional\\dataflow};
+\node[domain] (hardware) at (0,1.0) {Hardware-conscious\\analytics and\\approximate execution};
+\node[domain] (serving) at (0,-1.0) {LLM serving and\\memory-bound\\inference};
+\node[domain] (memory) at (0,-3.0) {Retrieval, retention,\\and agentic\\memory services};
+
+\node[state] (state) at (6.2,0) {Governed state objects\\windows, queues, KV pages,\\indexes, replay buffers,\\workflow memory};
+
+\node[core] (access) at (11.1,3.0) {State access\\and scheduling};
+\node[core] (exec) at (11.1,0) {State-aware\\execution};
+\node[core] (evo) at (11.1,-3.0) {State evolution\\and reuse};
+
+\node[output] (synth) at (17.4,3.0) {Comparative synthesis\\mechanism families,\\transferable seams};
+\node[output] (blueprint) at (17.4,1.0) {Runtime blueprint\\catalog, observe,\\decide, actuate, safety};
+\node[output] (eval) at (17.4,-1.0) {Evaluation outlook\\disturbance, long horizon,\\composition};
+\node[output] (agenda) at (17.4,-3.0) {Integrated agenda\\memory middleware,\\state-centric scheduling};
+
+\node[base] (scaffold) at (9.8,-5.45) {Shared comparison scaffold: state object $\rightarrow$ control surface $\rightarrow$ coupling path $\rightarrow$ evaluation boundary $\rightarrow$ remaining gap};
+
+\draw[arrow] (stream.east) -- (state.west);
+\draw[arrow] (hardware.east) -- (state.west);
+\draw[arrow] (serving.east) -- (state.west);
+\draw[arrow] (memory.east) -- (state.west);
+
+\draw[arrow] (state.east) -- (access.west);
+\draw[arrow] (access.south) -- (exec.north);
+\draw[arrow] (exec.south) -- (evo.north);
+\draw[dashedarrow] (evo.west) -| node[pos=0.28, left=4pt, note] {future contention,\\memory debt,\\reuse pressure} (access.west);
+
+\draw[arrow] (access.east) -- (synth.west);
+\draw[arrow] (exec.east) -- ++(8mm,0) |- (synth.west);
+\draw[arrow] (evo.east) -- ++(8mm,0) |- (synth.west);
+
+\draw[arrow] (synth.south) -- (blueprint.north);
+\draw[arrow] (blueprint.south) -- (eval.north);
+\draw[arrow] (eval.south) -- (agenda.north);
+
+\draw[arrow] ([xshift=-38mm]scaffold.north) -- ++(0,8mm) -| (state.south);
+\draw[arrow] ([xshift=42mm]scaffold.north) -- ++(0,8mm) -| (agenda.south);
+\end{tikzpicture}
